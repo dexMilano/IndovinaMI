@@ -99,7 +99,7 @@
       <div id="create-room-card" class="bg-slate-800 p-5 rounded-2xl border border-slate-700 shadow-xl space-y-4">
         <div class="flex items-center justify-between gap-2">
           <h2 class="font-semibold text-lg text-indigo-300">Crea una Stanza (Host)</h2>
-          <span id="deck-source-badge" class="text-[10px] font-semibold px-2.5 py-1 rounded-full bg-slate-900 text-slate-300 border border-slate-700">
+          <span id="deck-source-badge" class="text-[10px] font-semibold px-2.5 py-1 rounded-full bg-slate-900 text-slate-300 border border-slate-700 truncate max-w-[190px]">
             Mazzo in caricamento...
           </span>
         </div>
@@ -130,6 +130,16 @@
           </div>
         </div>
 
+        <!-- Regola opzionale: Bonus Bersaglio -->
+        <div class="bg-slate-900/70 border border-slate-700/80 rounded-xl p-3">
+          <label class="flex items-start gap-2.5 text-xs text-slate-200 cursor-pointer">
+            <input type="checkbox" id="target-bonus-enabled-input" class="mt-0.5 rounded border-slate-600 bg-slate-800 text-amber-400 focus:ring-amber-400">
+            <span>
+              <strong class="text-amber-300">Bonus Bersaglio opzionale (+3 pt)</strong>: assegna +3 punti al bersaglio se ogni sua opzione viene indovinata da almeno un giocatore.
+            </span>
+          </label>
+        </div>
+
         <button type="button" id="create-room-btn" onclick="createRoom()" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 rounded-xl shadow-lg transition transform active:scale-95">
           Crea nuova Stanza
         </button>
@@ -142,6 +152,7 @@
       <div class="bg-slate-800 p-6 rounded-2xl border border-slate-700 text-center shadow-xl space-y-4">
         <span class="text-xs uppercase tracking-widest text-slate-400">Codice Stanza</span>
         <div id="display-room-code" class="text-4xl font-extrabold text-indigo-400 tracking-wider">----</div>
+        <div id="lobby-target-bonus-info" class="inline-block text-[11px] px-3 py-1 rounded-full bg-slate-900 border border-slate-700 text-slate-300"></div>
 
         <div id="qrcode-container" class="flex justify-center my-4 p-2 bg-white rounded-xl w-fit mx-auto"></div>
 
@@ -167,14 +178,14 @@
           <span id="question-counter-badge" class="text-[11px] font-extrabold uppercase tracking-wider px-2.5 py-1 rounded-full bg-indigo-500/20 text-indigo-300 border border-indigo-400/40">
             Domanda 1 / 1
           </span>
-          <span id="leader-submission-badge" class="text-[11px] font-semibold px-2.5 py-1 rounded-full bg-slate-900 text-slate-300 border border-slate-700">
-            Leader in attesa...
+          <span id="target-submission-badge" class="text-[11px] font-semibold px-2.5 py-1 rounded-full bg-slate-900 text-slate-300 border border-slate-700">
+            Bersaglio in attesa...
           </span>
         </div>
 
         <div class="text-center pt-0.5">
-          <div class="text-[11px] text-slate-400">Leader di questo turno:</div>
-          <div id="current-leader-name" class="text-lg font-bold text-amber-400">---</div>
+          <div class="text-[11px] text-slate-400">Bersaglio di questo turno:</div>
+          <div id="current-target-name" class="text-lg font-bold text-amber-400">---</div>
         </div>
 
         <div class="bg-slate-900/90 border border-slate-700/80 rounded-lg px-3 py-2 flex items-center justify-between text-xs">
@@ -183,12 +194,12 @@
         </div>
       </div>
 
-      <div id="leader-timer-banner" class="hidden bg-amber-950/60 border border-amber-400/60 rounded-xl p-3 text-center space-y-1">
+      <div id="target-timer-banner" class="hidden bg-amber-950/60 border border-amber-400/60 rounded-xl p-3 text-center space-y-1">
         <div class="text-[11px] uppercase tracking-wider font-bold text-amber-300">
-          ⏱️ Il Leader ha inviato! Tempo rimasto:
+          ⏱️ Il Bersaglio ha inviato! Tempo rimasto:
         </div>
-        <div id="leader-countdown-display" class="text-2xl font-mono font-extrabold text-amber-400">01:00</div>
-        <p id="leader-timer-subtext" class="text-[11px] text-amber-200/80">
+        <div id="target-countdown-display" class="text-2xl font-mono font-extrabold text-amber-400">01:00</div>
+        <p id="target-timer-subtext" class="text-[11px] text-amber-200/80">
           Allo scadere del minuto le risposte mancanti verranno inviate in automatico.
         </p>
       </div>
@@ -226,25 +237,38 @@
           <span class="w-16"></span>
         </div>
 
-        <div id="my-round-summary" class="bg-indigo-950/50 border border-indigo-500/40 p-3.5 rounded-xl text-left">
-          <div class="text-[11px] uppercase tracking-wider text-indigo-300 font-semibold">Il tuo esito nel turno</div>
-          <div id="my-round-delta" class="text-lg font-extrabold mt-0.5">---</div>
-          <div id="my-round-total" class="text-xs text-slate-300 mt-1">Totale parziale: ---</div>
-        </div>
-
-        <div class="bg-slate-900 p-3 rounded-xl border border-slate-700 text-left space-y-2">
-          <div class="flex items-center justify-between gap-2">
-            <h4 class="text-xs text-slate-400">
-              Classifica di <span id="res-leader-name" class="text-amber-400 font-semibold"></span> (1 → 5):
-            </h4>
-            <span id="leader-bonus-badge" class="text-[11px] px-2 py-0.5 rounded-full font-semibold"></span>
+        <!-- VISTA RISULTATI PER IL BERSAGLIO -->
+        <div id="target-results-view" class="hidden space-y-4 text-left">
+          <div class="bg-amber-950/40 border border-amber-400/40 p-3.5 rounded-xl space-y-1">
+            <div class="flex items-center justify-between gap-2">
+              <span class="text-[11px] uppercase tracking-wider text-amber-300 font-bold">Esito Bersaglio del Turno</span>
+              <span id="target-bonus-status-pill" class="text-[11px] px-2.5 py-0.5 rounded-full font-bold"></span>
+            </div>
+            <p id="target-bonus-explanation" class="text-xs text-amber-100/90 mt-1"></p>
           </div>
-          <ol id="actual-ranking-list" class="text-xs space-y-1.5 text-slate-200"></ol>
+
+          <div class="bg-slate-900 p-3.5 rounded-xl border border-slate-700 space-y-2">
+            <h4 class="text-xs font-semibold text-slate-300">
+              Le tue risposte (1 → 5) e quanti giocatori le hanno indovinate:
+            </h4>
+            <ol id="target-answers-stats-list" class="space-y-1.5 text-xs text-slate-200"></ol>
+          </div>
         </div>
 
-        <div class="border-t border-slate-700 pt-3 text-left">
-          <h4 class="text-sm font-semibold text-slate-300 mb-2 text-center">Dettaglio Giocatori (Turno, Domande/Posizioni, Bonus e Totale):</h4>
-          <ul id="round-scores-list" class="space-y-2.5 text-xs"></ul>
+        <!-- VISTA RISULTATI PER I GIOCATORI (NON BERSAGLIO) -->
+        <div id="player-results-view" class="hidden space-y-4 text-left">
+          <div class="bg-indigo-950/50 border border-indigo-500/40 p-3.5 rounded-xl">
+            <div class="text-[11px] uppercase tracking-wider text-indigo-300 font-semibold">Il tuo punteggio totale in questo turno</div>
+            <div id="player-turn-total-score" class="text-2xl font-extrabold mt-0.5 text-emerald-400">0 pt</div>
+            <p id="player-turn-calculation-message" class="text-xs text-slate-200 mt-1.5 leading-relaxed"></p>
+          </div>
+
+          <div class="bg-slate-900 p-3.5 rounded-xl border border-slate-700 space-y-2">
+            <h4 class="text-xs font-semibold text-slate-300">
+              Scelte del Bersaglio <span id="player-view-target-name" class="text-amber-400 font-bold"></span> e tuo esito:
+            </h4>
+            <ol id="player-target-picks-list" class="space-y-1.5 text-xs text-slate-200"></ol>
+          </div>
         </div>
 
         <button type="button" onclick="openStandingsScreen()" class="w-full bg-amber-500 hover:bg-amber-600 text-slate-950 font-extrabold py-3 rounded-xl shadow-lg transition transform active:scale-95">
@@ -276,7 +300,7 @@
             In attesa che l'Host avvii il prossimo turno...
           </p>
           <button type="button" onclick="backToRoundResults()" class="w-full bg-slate-700 hover:bg-slate-600 text-slate-200 font-semibold py-2.5 rounded-xl text-xs transition">
-            ← Torna ai dettagli del turno
+            ← Torna ai risultati del turno
           </button>
         </div>
       </div>
@@ -305,7 +329,9 @@
     let myPlayerKey = '';
     let isHost = false;
     let dbQuestionsDeck = [];
+    let dbDeckName = 'Domande Base';
     let csvQuestionsDeck = [];
+    let csvDeckName = '';
     let hasLoadedCsv = false;
     let pendingCsvDbDecision = false;
     let userVote = [];
@@ -334,45 +360,53 @@
     const defaultQuestions = [
       {
         domanda: "Quali sono i tuoi gusti di gelato preferiti?",
-        domanda_giocatori: "Quali sono i gusti di gelato preferiti di {leader}?",
+        domanda_giocatori: "Quali sono i gusti di gelato preferiti di {bersaglio}?",
         options: ["Cioccolato", "Fragola", "Pistacchio", "Limone", "Stracciatella"]
       },
       {
         domanda: "Quali superpoteri vorresti avere?",
-        domanda_giocatori: "Quali superpoteri vorrebbe avere {leader}?",
+        domanda_giocatori: "Quali superpoteri vorrebbe avere {bersaglio}?",
         options: ["Volare", "Invisibilità", "Leggere nel pensiero", "Viaggiare nel tempo", "Teletrasporto"]
       },
       {
         domanda: "Qual è il tuo genere di film preferito?",
-        domanda_giocatori: "Qual è il genere di film preferito di {leader}?",
+        domanda_giocatori: "Qual è il genere di film preferito di {bersaglio}?",
         options: ["Azione / Avventura", "Commedia", "Horror", "Fantascienza / Sci-Fi", "Drammatico"]
       },
       {
         domanda: "Dove vorresti passare la tua vacanza ideale?",
-        domanda_giocatori: "Dove {leader} vorrebbe passare la sua vacanza ideale?",
+        domanda_giocatori: "Dove {bersaglio} vorrebbe passare la sua vacanza ideale?",
         options: ["Spiaggia tropicale", "Montagna in inverno", "Città d'arte", "Campeggio nella natura", "Crociera nei Caraibi"]
       },
       {
         domanda: "Qual è il tuo condimento top sulla Pizza?",
-        domanda_giocatori: "Qual è il condimento top sulla Pizza per {leader}?",
+        domanda_giocatori: "Qual è il condimento top sulla Pizza per {bersaglio}?",
         options: ["Mozzarella & Pomodoro (Margherita)", "Salame piccante", "Funghi e Prosciutto", "Patatine & Salsiccia", "Ananas (Hawayana)"]
       },
       {
         domanda: "Cosa preferisci fare in un weekend di pioggia?",
-        domanda_giocatori: "Cosa preferisce fare {leader} in un weekend di pioggia?",
+        domanda_giocatori: "Cosa preferisce fare {bersaglio} in un weekend di pioggia?",
         options: ["Serie TV / Film sotto le coperte", "Giocare ai videogiochi / Giochi da tavolo", "Leggere un buon libro", "Cucinare o fare dolci", "Dormire tutto il giorno"]
       },
       {
         domanda: "Qual è il tuo animale domestico ideale?",
-        domanda_giocatori: "Qual è l'animale domestico ideale per {leader}?",
+        domanda_giocatori: "Qual è l'animale domestico ideale per {bersaglio}?",
         options: ["Cane", "Gatto", "Pappagallo", "Coniglio", "Pesci rossi"]
       },
       {
         domanda: "Qual è il tuo cibo da Fast Food preferito?",
-        domanda_giocatori: "Qual è il cibo da Fast Food preferito di {leader}?",
+        domanda_giocatori: "Qual è il cibo da Fast Food preferito di {bersaglio}?",
         options: ["Hamburger gourmet", "Patatine fritte", "Nuggets di pollo", "Pizza al taglio", "Kebab completo"]
       }
     ];
+
+    function stripFileExtension(fileName) {
+      if (!fileName || typeof fileName !== 'string') return 'Mazzo CSV';
+      const cleaned = fileName.trim();
+      const lastDot = cleaned.lastIndexOf('.');
+      if (lastDot <= 0) return cleaned;
+      return cleaned.substring(0, lastDot);
+    }
 
     function normalizeQuestionList(rawList) {
       if (!Array.isArray(rawList)) return [];
@@ -397,17 +431,29 @@
       return [...defaultQuestions];
     }
 
-    function updateDeckBadge(sourceText, count) {
-      const badge = document.getElementById('deck-source-badge');
-      if (!badge) return;
-      badge.textContent = `${sourceText} (${count} domande)`;
+    function getActiveDeckName() {
+      if (hasLoadedCsv && csvQuestionsDeck.length > 0 && csvDeckName) {
+        return csvDeckName;
+      }
+      return dbDeckName || 'Domande Base';
     }
 
-    function replaceDbQuestions(list) {
+    function updateDeckBadge(deckName, count) {
+      const badge = document.getElementById('deck-source-badge');
+      if (!badge) return;
+      badge.textContent = `${deckName} • ${count} domande`;
+      badge.title = `${deckName} (${count} domande)`;
+    }
+
+    function replaceDbQuestions(list, deckTitle) {
       const cleanList = normalizeQuestionList(list);
       if (cleanList.length === 0) return Promise.resolve();
-      // Svuota completamente il nodo questionBank e scrive le nuove domande dal CSV
-      return questionBankRef.remove().then(() => questionBankRef.set(cleanList));
+      const payload = {
+        name: deckTitle || 'Domande Base',
+        items: cleanList,
+        updatedAt: Date.now()
+      };
+      return questionBankRef.remove().then(() => questionBankRef.set(payload));
     }
 
     function confirmReplaceDbWithCsv(shouldSaveToDb) {
@@ -418,46 +464,63 @@
 
       if (!hasLoadedCsv || csvQuestionsDeck.length === 0) return;
 
+      const count = csvQuestionsDeck.length;
       if (shouldSaveToDb) {
-        statusEl.textContent = "⏳ Svuotamento DB e salvataggio domande CSV in corso...";
+        statusEl.textContent = `⏳ Aggiornamento DB con "${csvDeckName}" (${count} domande)...`;
         statusEl.classList.remove('hidden');
 
-        replaceDbQuestions(csvQuestionsDeck)
+        replaceDbQuestions(csvQuestionsDeck, csvDeckName)
           .then(() => {
             dbQuestionsDeck = [...csvQuestionsDeck];
-            updateDeckBadge("CSV (salvato nel DB)", csvQuestionsDeck.length);
-            statusEl.textContent = `✅ Usate ${csvQuestionsDeck.length} domande del CSV e salvate nel DB (vecchie rimosse).`;
+            dbDeckName = csvDeckName;
+            updateDeckBadge(csvDeckName, count);
+            statusEl.textContent = `✅ Mazzo "${csvDeckName}" (${count} domande) caricato e salvato nel DB.`;
             statusEl.classList.remove('hidden');
           })
           .catch((err) => {
-            updateDeckBadge("CSV attivo", csvQuestionsDeck.length);
-            statusEl.textContent = `⚠️ Usate ${csvQuestionsDeck.length} domande del CSV, ma errore salvataggio DB: ${err.message}`;
+            updateDeckBadge(csvDeckName, count);
+            statusEl.textContent = `⚠️ Mazzo "${csvDeckName}" (${count} domande) attivo, ma errore salvataggio DB: ${err.message}`;
             statusEl.classList.remove('hidden');
           });
       } else {
-        updateDeckBadge("CSV attivo (solo partita)", csvQuestionsDeck.length);
-        statusEl.textContent = `✅ Usate ${csvQuestionsDeck.length} domande del CSV solo per questa partita (DB invariato).`;
+        updateDeckBadge(csvDeckName, count);
+        statusEl.textContent = `✅ Mazzo "${csvDeckName}" (${count} domande) attivo per questa partita.`;
         statusEl.classList.remove('hidden');
       }
     }
 
     function loadQuestionBankFromFirebase() {
       dbQuestionsDeck = [...defaultQuestions];
-      updateDeckBadge("Default", dbQuestionsDeck.length);
+      dbDeckName = 'Domande Base';
+      updateDeckBadge(dbDeckName, dbQuestionsDeck.length);
 
       return questionBankRef.once('value')
         .then((snap) => {
-          const dbQuestions = normalizeQuestionList(snap.val());
+          const val = snap.val();
+          let dbQuestions = [];
+          let savedName = 'Domande DB';
+
+          if (Array.isArray(val)) {
+            dbQuestions = normalizeQuestionList(val);
+          } else if (val && typeof val === 'object') {
+            dbQuestions = normalizeQuestionList(val.items);
+            if (typeof val.name === 'string' && val.name.trim()) {
+              savedName = val.name.trim();
+            }
+          }
+
           if (dbQuestions.length > 0) {
             dbQuestionsDeck = dbQuestions;
+            dbDeckName = savedName;
             if (!hasLoadedCsv) {
-              updateDeckBadge("Firebase DB", dbQuestionsDeck.length);
+              updateDeckBadge(dbDeckName, dbQuestionsDeck.length);
             }
           } else {
-            return replaceDbQuestions(defaultQuestions).then(() => {
+            return replaceDbQuestions(defaultQuestions, 'Domande Base').then(() => {
               dbQuestionsDeck = [...defaultQuestions];
+              dbDeckName = 'Domande Base';
               if (!hasLoadedCsv) {
-                updateDeckBadge("Firebase DB", dbQuestionsDeck.length);
+                updateDeckBadge(dbDeckName, dbQuestionsDeck.length);
               }
             });
           }
@@ -465,8 +528,9 @@
         .catch((err) => {
           console.warn('[IndovinaMI] Impossibile leggere /questionBank, uso domande predefinite:', err);
           dbQuestionsDeck = [...defaultQuestions];
+          dbDeckName = 'Domande Base';
           if (!hasLoadedCsv) {
-            updateDeckBadge("Locale", dbQuestionsDeck.length);
+            updateDeckBadge(dbDeckName, dbQuestionsDeck.length);
           }
         });
     }
@@ -513,7 +577,7 @@
         .catch((err) => {
           const reason = err && err.message ? err.message : 'Errore sconosciuto';
           setFirebaseStatus('error', `Firebase errore: ${reason}`);
-          updateDeckBadge("Locale", defaultQuestions.length);
+          updateDeckBadge('Domande Base', defaultQuestions.length);
         });
 
       setTimeout(() => {
@@ -560,6 +624,8 @@
       const promptEl = document.getElementById('csv-db-prompt');
       if (!file) return;
 
+      const baseDeckName = stripFileExtension(file.name);
+
       const reader = new FileReader();
       reader.onload = function(evt) {
         try {
@@ -571,21 +637,21 @@
             if (!line.trim()) return;
             const cols = parseCSVLine(line);
             const firstColLower = (cols[0] || '').replace(/^\uFEFF/, '').toLowerCase();
-            if (index === 0 && (firstColLower === 'domanda' || firstColLower === 'domanda_leader')) return;
+            if (index === 0 && (firstColLower === 'domanda' || firstColLower === 'domanda_bersaglio' || firstColLower === 'domanda_leader')) return;
 
             if (cols.length >= 7 && cols[0] && cols.slice(2, 7).every(Boolean)) {
-              const leaderQ = cols[0].replace(/^\uFEFF/, '');
-              const playersQ = cols[1] ? cols[1].trim() : leaderQ;
+              const targetQ = cols[0].replace(/^\uFEFF/, '');
+              const playersQ = cols[1] ? cols[1].trim() : targetQ;
               parsed.push({
-                domanda: leaderQ,
+                domanda: targetQ,
                 domanda_giocatori: playersQ,
                 options: [cols[2], cols[3], cols[4], cols[5], cols[6]]
               });
             } else if (cols.length >= 6 && cols[0] && cols.slice(1, 6).every(Boolean)) {
-              const leaderQ = cols[0].replace(/^\uFEFF/, '');
+              const targetQ = cols[0].replace(/^\uFEFF/, '');
               parsed.push({
-                domanda: leaderQ,
-                domanda_giocatori: leaderQ,
+                domanda: targetQ,
+                domanda_giocatori: targetQ,
                 options: [cols[1], cols[2], cols[3], cols[4], cols[5]]
               });
             }
@@ -594,15 +660,17 @@
           const normalized = normalizeQuestionList(parsed);
           if (normalized.length > 0) {
             csvQuestionsDeck = normalized;
+            csvDeckName = baseDeckName;
             hasLoadedCsv = true;
             pendingCsvDbDecision = true;
-            updateDeckBadge("CSV attivo", normalized.length);
-            statusEl.textContent = `✅ Caricate ${normalized.length} domande da "${file.name}". Verranno usati i dati del CSV.`;
+            updateDeckBadge(baseDeckName, normalized.length);
+            statusEl.textContent = `✅ Mazzo "${baseDeckName}" • ${normalized.length} domande caricate.`;
             statusEl.classList.remove('hidden');
             promptEl.classList.remove('hidden');
           } else {
             hasLoadedCsv = false;
             csvQuestionsDeck = [];
+            csvDeckName = '';
             pendingCsvDbDecision = false;
             promptEl.classList.add('hidden');
             statusEl.classList.add('hidden');
@@ -618,16 +686,18 @@
       reader.readAsText(file, 'UTF-8');
     });
 
-    function formatQuestionForViewer(questionObj, leaderName, isViewerLeader) {
+    function formatQuestionForViewer(questionObj, targetName, isViewerTarget) {
       if (!questionObj) return "";
-      const safeLeader = leaderName || "il Leader";
-      if (isViewerLeader) {
+      const safeTarget = targetName || "il Bersaglio";
+      if (isViewerTarget) {
         return questionObj.domanda || "";
       }
       const rawPlayersQ = questionObj.domanda_giocatori || questionObj.domanda || "";
       return rawPlayersQ
-        .replace(/<leader>/gi, safeLeader)
-        .replace(/\{leader\}/gi, safeLeader);
+        .replace(/<bersaglio>/gi, safeTarget)
+        .replace(/\{bersaglio\}/gi, safeTarget)
+        .replace(/<leader>/gi, safeTarget)
+        .replace(/\{leader\}/gi, safeTarget);
     }
 
     function revealCreateRoomCard() {
@@ -651,7 +721,7 @@
 
       if (hasLoadedCsv && pendingCsvDbDecision) {
         const saveToDb = confirm(
-          "Hai caricato un file CSV: vuoi caricare queste domande anche nel DB, svuotandolo da quelle già presenti?"
+          `Hai caricato "${csvDeckName}" (${csvQuestionsDeck.length} domande): vuoi caricarlo anche nel DB, svuotandolo da quelle già presenti?`
         );
         confirmReplaceDbWithCsv(saveToDb);
       }
@@ -663,6 +733,8 @@
       roomRef = db.ref('rooms/' + roomCode);
 
       const deckToUse = getActiveDeck();
+      const activeDeckTitle = getActiveDeckName();
+      const targetBonusEnabled = Boolean(document.getElementById('target-bonus-enabled-input').checked);
 
       const btn = document.getElementById('create-room-btn');
       btn.disabled = true;
@@ -671,11 +743,13 @@
       const initialRoomData = {
         state: 'lobby',
         host: myNickname,
+        deckName: activeDeckTitle,
+        targetBonusEnabled: targetBonusEnabled,
         roundNumber: 0,
         questions: deckToUse,
         usedQuestionIndices: [],
-        leaderHistory: [],
-        leaderTimerDeadline: null,
+        targetHistory: [],
+        targetTimerDeadline: null,
         players: {
           [myPlayerKey]: { name: myNickname, score: 0 }
         }
@@ -734,6 +808,15 @@
 
     function setupLobbyUI() {
       document.getElementById('display-room-code').innerText = roomCode;
+      const bonusInfo = document.getElementById('lobby-target-bonus-info');
+      const bonusEnabled = Boolean(currentGameState && currentGameState.targetBonusEnabled);
+      bonusInfo.textContent = bonusEnabled
+        ? "⭐ Bonus Bersaglio (+3 pt): ATTIVO"
+        : "Bonus Bersaglio: DISATTIVO";
+      bonusInfo.className = bonusEnabled
+        ? "inline-block text-[11px] px-3 py-1 rounded-full bg-amber-500/20 border border-amber-400/40 text-amber-300 font-semibold"
+        : "inline-block text-[11px] px-3 py-1 rounded-full bg-slate-900 border border-slate-700 text-slate-400";
+
       if (isHost) {
         document.getElementById('host-controls').classList.remove('hidden');
         document.getElementById('waiting-msg').classList.add('hidden');
@@ -757,7 +840,7 @@
         clearInterval(timerInterval);
         timerInterval = null;
       }
-      document.getElementById('leader-timer-banner').classList.add('hidden');
+      document.getElementById('target-timer-banner').classList.add('hidden');
     }
 
     function formatSecondsMMSS(totalSeconds) {
@@ -767,23 +850,23 @@
       return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
     }
 
-    function syncLeaderTimerUI(data) {
+    function syncTargetTimerUI(data) {
       const votesObj = data.votes || {};
-      const leaderKey = data.currentLeader;
+      const targetKey = data.currentTarget;
       const hasVoted = Object.prototype.hasOwnProperty.call(votesObj, myPlayerKey);
-      const deadline = data.leaderTimerDeadline;
+      const deadline = data.targetTimerDeadline;
 
       if (data.state !== 'playing' || !deadline || hasVoted) {
         if (timerInterval) {
           clearInterval(timerInterval);
           timerInterval = null;
         }
-        document.getElementById('leader-timer-banner').classList.add('hidden');
+        document.getElementById('target-timer-banner').classList.add('hidden');
         return;
       }
 
-      const banner = document.getElementById('leader-timer-banner');
-      const display = document.getElementById('leader-countdown-display');
+      const banner = document.getElementById('target-timer-banner');
+      const display = document.getElementById('target-countdown-display');
       banner.classList.remove('hidden');
 
       const updateTick = () => {
@@ -795,7 +878,7 @@
           timerInterval = null;
           display.textContent = "00:00";
 
-          const roundId = `${data.roundNumber || 0}_${leaderKey || ''}`;
+          const roundId = `${data.roundNumber || 0}_${targetKey || ''}`;
           if (!hasVoted && autoSubmitTriggeredForRound !== roundId) {
             autoSubmitTriggeredForRound = roundId;
             const fallbackVote = (Array.isArray(userVote) && userVote.length === 5)
@@ -818,26 +901,26 @@
       const submittedCount = Object.keys(votesObj).length;
       const remainingCount = Math.max(0, totalPlayers - submittedCount);
 
-      const leaderKey = data.currentLeader;
-      const leaderName = data.currentLeaderName || leaderKey || 'Leader';
-      const leaderVoted = Boolean(leaderKey && Object.prototype.hasOwnProperty.call(votesObj, leaderKey));
+      const targetKey = data.currentTarget;
+      const targetName = data.currentTargetName || targetKey || 'Bersaglio';
+      const targetVoted = Boolean(targetKey && Object.prototype.hasOwnProperty.call(votesObj, targetKey));
 
       document.getElementById('submissions-count-text').textContent =
         `Risposte inviate: ${submittedCount} / ${totalPlayers}`;
       document.getElementById('submissions-remaining-text').textContent =
         `Restano: ${remainingCount}`;
 
-      const leaderBadge = document.getElementById('leader-submission-badge');
-      if (leaderVoted) {
-        leaderBadge.textContent = `✅ Leader ${leaderName} ha inviato`;
-        leaderBadge.className = "text-[11px] font-semibold px-2.5 py-1 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/40";
+      const targetBadge = document.getElementById('target-submission-badge');
+      if (targetVoted) {
+        targetBadge.textContent = `✅ Bersaglio ${targetName} ha inviato`;
+        targetBadge.className = "text-[11px] font-semibold px-2.5 py-1 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/40";
       } else {
-        leaderBadge.textContent = `⏳ Leader ${leaderName} non ha inviato`;
-        leaderBadge.className = "text-[11px] font-semibold px-2.5 py-1 rounded-full bg-slate-900 text-amber-300 border border-slate-700";
+        targetBadge.textContent = `⏳ Bersaglio ${targetName} non ha inviato`;
+        targetBadge.className = "text-[11px] font-semibold px-2.5 py-1 rounded-full bg-slate-900 text-amber-300 border border-slate-700";
       }
 
       document.getElementById('waiting-status-detail').textContent =
-        `Inviate ${submittedCount} su ${totalPlayers} (restano ${remainingCount})${leaderVoted ? ` • ${leaderName} ha già inviato` : ''}.`;
+        `Inviate ${submittedCount} su ${totalPlayers} (restano ${remainingCount})${targetVoted ? ` • ${targetName} ha già inviato` : ''}.`;
     }
 
     function getSortedStandings(playersObj) {
@@ -961,6 +1044,119 @@
       showScreen('screen-results');
     }
 
+    function renderTurnResultsForViewer(data) {
+      const playersObj = data.players || {};
+      const totalQ = Array.isArray(data.questions) && data.questions.length > 0 ? data.questions.length : defaultQuestions.length;
+      const currentQNum = Number(data.roundNumber || 1);
+      document.getElementById('results-question-counter').textContent = `Domanda ${currentQNum} / ${totalQ}`;
+
+      const targetKey = data.currentTarget;
+      const targetName = data.currentTargetName || targetKey || 'Bersaglio';
+      const isViewerTarget = myPlayerKey === targetKey;
+
+      const targetView = document.getElementById('target-results-view');
+      const playerView = document.getElementById('player-results-view');
+
+      const optionStats = Array.isArray(data.optionStats) ? data.optionStats : [];
+      const targetRanking = Array.isArray(data.targetRanking) ? data.targetRanking : [];
+      const targetBonusEnabled = Boolean(data.targetBonusEnabled);
+      const targetBonusEarned = Boolean(data.targetBonusEarned);
+
+      if (isViewerTarget) {
+        targetView.classList.remove('hidden');
+        playerView.classList.add('hidden');
+
+        const pill = document.getElementById('target-bonus-status-pill');
+        const explanation = document.getElementById('target-bonus-explanation');
+
+        if (!targetBonusEnabled) {
+          pill.textContent = "Bonus non attivo";
+          pill.className = "text-[11px] px-2.5 py-0.5 rounded-full font-bold bg-slate-800 text-slate-400 border border-slate-700";
+          explanation.textContent = "Il bonus bersaglio non era attivo per questa partita (0 pt bonus).";
+        } else if (targetBonusEarned) {
+          pill.textContent = "⭐ Bonus PRESO (+3 pt)";
+          pill.className = "text-[11px] px-2.5 py-0.5 rounded-full font-bold bg-amber-500/20 text-amber-300 border border-amber-400/50";
+          explanation.textContent = "Hai preso il bonus (+3 pt): ogni tua opzione è stata indovinata da almeno un giocatore!";
+        } else {
+          pill.textContent = "Bonus NON preso (0 pt)";
+          pill.className = "text-[11px] px-2.5 py-0.5 rounded-full font-bold bg-slate-800 text-slate-300 border border-slate-600";
+          explanation.textContent = "Non hai preso il bonus: per ottenere +3 pt serve che tutte e 5 le tue opzioni vengano indovinate da almeno un giocatore.";
+        }
+
+        const statsRows = optionStats.length > 0
+          ? optionStats
+          : targetRanking.map((opt, idx) => ({ position: idx + 1, option: opt, guessedCount: 0 }));
+
+        document.getElementById('target-answers-stats-list').innerHTML = statsRows.map((st, idx) => {
+          const count = Number(st.guessedCount || 0);
+          const label = count === 1 ? "1 giocatore ha indovinato" : `${count} giocatori hanno indovinato`;
+          return `
+            <li class="flex items-center justify-between gap-2 bg-slate-800/80 border border-slate-700/80 px-3 py-2 rounded-lg">
+              <div class="flex items-center gap-2 min-w-0">
+                <span class="inline-flex items-center justify-center w-5 h-5 rounded-full bg-amber-500/20 text-amber-300 font-bold text-[11px] shrink-0">${st.position || (idx + 1)}</span>
+                <span class="truncate text-slate-100 font-medium">${st.option}</span>
+              </div>
+              <span class="text-[11px] font-bold shrink-0 px-2 py-0.5 rounded ${count > 0 ? 'bg-emerald-500/20 text-emerald-300' : 'bg-slate-700 text-slate-400'}">
+                ${label}
+              </span>
+            </li>
+          `;
+        }).join('');
+      } else {
+        targetView.classList.add('hidden');
+        playerView.classList.remove('hidden');
+
+        document.getElementById('player-view-target-name').textContent = targetName;
+
+        const roundScores = Array.isArray(data.roundScores) ? data.roundScores : [];
+        const myEntry = roundScores.find(s => s.playerKey === myPlayerKey);
+        const turnPts = myEntry ? Number(myEntry.points || 0) : 0;
+        const breakdown = myEntry && Array.isArray(myEntry.breakdown) ? myEntry.breakdown : [];
+        const matches = myEntry ? Number(myEntry.matches || 0) : 0;
+
+        const scoreEl = document.getElementById('player-turn-total-score');
+        const sign = turnPts > 0 ? `+${turnPts}` : `${turnPts}`;
+        scoreEl.textContent = `${sign} punti in questo turno`;
+        scoreEl.className = `text-2xl font-extrabold mt-0.5 ${turnPts > 0 ? 'text-emerald-400' : turnPts < 0 ? 'text-rose-400' : 'text-amber-300'}`;
+
+        const calcParts = [];
+        breakdown.forEach(b => {
+          if (b.isHit) {
+            calcParts.push(`pos. ${b.position} (+${b.points} pt)`);
+          }
+        });
+        if (matches === 5) {
+          calcParts.push("bonus classifica perfetta (+3 pt)");
+        } else if (matches === 0) {
+          calcParts.push("malus 0 indovinate (-1 pt)");
+        }
+
+        const calcSummary = calcParts.length > 0
+          ? `Calcolo turno (${matches}/5 indovinate): ${calcParts.join(" + ")} = ${sign} pt.`
+          : `Calcolo turno (${matches}/5 indovinate): nessuna posizione indovinata = 0 pt.`;
+
+        document.getElementById('player-turn-calculation-message').textContent = calcSummary;
+
+        document.getElementById('player-target-picks-list').innerHTML = breakdown.map((b, idx) => {
+          const pos = b.position || (idx + 1);
+          const ptsLabel = b.isHit ? `+${b.points} pt` : "0 pt";
+          return `
+            <li class="flex items-center justify-between gap-2 bg-slate-800/80 border ${b.isHit ? 'border-emerald-500/40' : 'border-slate-700/80'} px-3 py-2 rounded-lg">
+              <div class="flex items-center gap-2 min-w-0">
+                <span class="inline-flex items-center justify-center w-5 h-5 rounded-full ${b.isHit ? 'bg-emerald-500/20 text-emerald-300' : 'bg-slate-700 text-slate-400'} font-bold text-[11px] shrink-0">${pos}</span>
+                <span class="truncate text-slate-100 font-medium">${b.option}</span>
+              </div>
+              <span class="text-[11px] font-bold shrink-0 px-2 py-0.5 rounded ${b.isHit ? 'bg-emerald-500/20 text-emerald-300' : 'bg-rose-500/15 text-rose-300'}">
+                ${b.isHit ? `Indovinata (${ptsLabel})` : 'Non indovinata'}
+              </span>
+            </li>
+          `;
+        }).join('');
+      }
+
+      renderStandingsUI(playersObj);
+    }
+
     function listenToRoom() {
       roomRef.off();
       roomRef.on('value', snapshot => {
@@ -973,6 +1169,7 @@
         if (data.state === 'lobby') {
           clearRoundTimer();
           viewingStandings = false;
+          setupLobbyUI();
           const list = document.getElementById('players-list');
           list.innerHTML = Object.entries(playersObj).map(([key, p]) => {
             const label = (p && p.name) ? p.name : key;
@@ -984,27 +1181,27 @@
 
         if (data.state === 'playing') {
           viewingStandings = false;
-          const leaderName = data.currentLeaderName || data.currentLeader;
-          const isViewerLeader = myPlayerKey === data.currentLeader;
+          const targetName = data.currentTargetName || data.currentTarget;
+          const isViewerTarget = myPlayerKey === data.currentTarget;
 
           const totalQ = Array.isArray(data.questions) && data.questions.length > 0 ? data.questions.length : defaultQuestions.length;
           const currentQNum = Number(data.roundNumber || 1);
           document.getElementById('question-counter-badge').textContent = `Domanda ${currentQNum} / ${totalQ}`;
-          document.getElementById('current-leader-name').innerText = leaderName;
+          document.getElementById('current-target-name').innerText = targetName;
           document.getElementById('current-question-text').innerText = formatQuestionForViewer(
             data.currentQuestion,
-            leaderName,
-            isViewerLeader
+            targetName,
+            isViewerTarget
           );
 
-          if (isViewerLeader) {
-            document.getElementById('role-instruction').innerText = "Sei il Leader! Trascina con l'ancora ⋮⋮ da 1 (preferita) a 5 (meno preferita):";
+          if (isViewerTarget) {
+            document.getElementById('role-instruction').innerText = "Sei il Bersaglio! Trascina con l'ancora ⋮⋮ da 1 (preferita) a 5 (meno preferita):";
           } else {
-            document.getElementById('role-instruction').innerText = `Indovina l'ordine (1 → 5) di ${leaderName} trascinando con l'ancora ⋮⋮:`;
+            document.getElementById('role-instruction').innerText = `Indovina l'ordine (1 → 5) del Bersaglio ${targetName} trascinando con l'ancora ⋮⋮:`;
           }
 
           updateSubmissionsStatusUI(data);
-          syncLeaderTimerUI(data);
+          syncTargetTimerUI(data);
 
           const hasVoted = data.votes && Object.prototype.hasOwnProperty.call(data.votes, myPlayerKey);
           if (!hasVoted) {
@@ -1029,117 +1226,13 @@
         if (data.state === 'results') {
           clearRoundTimer();
           userVote = [];
-          const roundKey = `${data.roundNumber || 0}_${data.currentLeader || ''}`;
+          const roundKey = `${data.roundNumber || 0}_${data.currentTarget || ''}`;
           if (lastResultsRoundKey !== roundKey) {
             lastResultsRoundKey = roundKey;
             viewingStandings = false;
           }
 
-          const totalQ = Array.isArray(data.questions) && data.questions.length > 0 ? data.questions.length : defaultQuestions.length;
-          const currentQNum = Number(data.roundNumber || 1);
-          document.getElementById('results-question-counter').textContent = `Domanda ${currentQNum} / ${totalQ}`;
-
-          const leaderName = data.currentLeaderName || data.currentLeader;
-          document.getElementById('res-leader-name').innerText = leaderName;
-
-          const roundScores = Array.isArray(data.roundScores) ? data.roundScores : [];
-          const myRoundEntry = roundScores.find(s => s.playerKey === myPlayerKey);
-          const myTotalScore = (playersObj[myPlayerKey] && typeof playersObj[myPlayerKey].score === 'number')
-            ? playersObj[myPlayerKey].score
-            : 0;
-
-          const myDeltaEl = document.getElementById('my-round-delta');
-          const myTotalEl = document.getElementById('my-round-total');
-
-          if (myRoundEntry) {
-            const pts = Number(myRoundEntry.points || 0);
-            const sign = pts > 0 ? `+${pts}` : `${pts}`;
-            myDeltaEl.textContent = `${sign} punti in questo turno (${myRoundEntry.summaryLabel || myRoundEntry.detail})`;
-            myDeltaEl.className = `text-lg font-extrabold mt-0.5 ${pts > 0 ? 'text-emerald-400' : pts < 0 ? 'text-rose-400' : 'text-amber-300'}`;
-          } else {
-            myDeltaEl.textContent = "Turno completato";
-            myDeltaEl.className = "text-lg font-extrabold mt-0.5 text-slate-200";
-          }
-          myTotalEl.textContent = `Il tuo totale fino ad ora: ${myTotalScore} punti`;
-
-          const optionStats = Array.isArray(data.optionStats) ? data.optionStats : [];
-          const leaderRanking = Array.isArray(data.leaderRanking) ? data.leaderRanking : [];
-          const leaderBonusEarned = Boolean(data.leaderBonusEarned);
-
-          const bonusBadge = document.getElementById('leader-bonus-badge');
-          if (leaderBonusEarned) {
-            bonusBadge.textContent = "⭐ Leader +3 p.ti";
-            bonusBadge.className = "text-[11px] px-2 py-0.5 rounded-full font-semibold bg-amber-500/20 text-amber-300 border border-amber-400/40";
-          } else {
-            bonusBadge.textContent = "Leader +0 p.ti bonus";
-            bonusBadge.className = "text-[11px] px-2 py-0.5 rounded-full font-semibold bg-slate-800 text-slate-400 border border-slate-700";
-          }
-
-          if (optionStats.length > 0) {
-            document.getElementById('actual-ranking-list').innerHTML = optionStats.map((st, idx) => `
-              <li class="flex items-center justify-between gap-2 bg-slate-800/80 border border-slate-700/80 px-2.5 py-2 rounded-lg">
-                <div class="flex items-center gap-2 min-w-0">
-                  <span class="inline-flex items-center justify-center w-5 h-5 rounded-full bg-indigo-600/30 text-indigo-300 font-bold text-[11px] shrink-0">${idx + 1}</span>
-                  <span class="truncate text-slate-100 font-medium">${st.option}</span>
-                </div>
-                <span class="text-[11px] font-semibold shrink-0 px-2 py-0.5 rounded ${st.guessedCount > 0 ? 'bg-emerald-500/20 text-emerald-300' : 'bg-slate-700 text-slate-400'}">
-                  ${st.guessedCount} indovinati
-                </span>
-              </li>
-            `).join('');
-          } else {
-            document.getElementById('actual-ranking-list').innerHTML = leaderRanking.map((item, idx) => `
-              <li class="py-1"><span class="font-bold text-indigo-400 mr-1">${idx + 1}.</span> ${item}</li>
-            `).join('');
-          }
-
-          document.getElementById('round-scores-list').innerHTML = roundScores.map(s => {
-            const isMe = s.playerKey === myPlayerKey;
-            const breakdownItems = Array.isArray(s.breakdown) ? s.breakdown : [];
-            const bonusNote = s.bonusNote ? `<div class="text-[11px] text-amber-300 font-semibold mt-1.5">✨ ${s.bonusNote}</div>` : '';
-
-            const breakdownHtml = breakdownItems.length > 0
-              ? `<div class="mt-1.5 space-y-1 bg-slate-950/60 border border-slate-800 rounded-lg p-2">
-                  ${breakdownItems.map(b => `
-                    <div class="flex items-center justify-between gap-2 text-[11px]">
-                      <span class="truncate ${b.isHit ? 'text-emerald-300 font-medium' : 'text-slate-400'}">
-                        ${b.isHit ? '✓' : '•'} Pos. ${b.position}: ${b.option}
-                      </span>
-                      <span class="font-bold shrink-0 ${b.points > 0 ? 'text-emerald-400' : 'text-slate-500'}">
-                        ${b.points > 0 ? '+' + b.points + ' pt' : '0 pt'}
-                      </span>
-                    </div>
-                  `).join('')}
-                 </div>`
-              : `<p class="text-[11px] text-slate-400 mt-1">${s.detail || ''}</p>`;
-
-            const runningTotal = typeof s.runningTotal === 'number'
-              ? s.runningTotal
-              : (playersObj[s.playerKey] && typeof playersObj[s.playerKey].score === 'number' ? playersObj[s.playerKey].score : 0);
-
-            return `
-              <li class="bg-slate-900 p-3 rounded-xl border ${isMe ? 'border-cyan-400 ring-1 ring-cyan-400/60' : 'border-slate-700'}">
-                <div class="flex justify-between items-start gap-2">
-                  <div>
-                    <span class="font-bold text-slate-100">${s.name}</span>
-                    ${s.isLeader ? `<span class="ml-1 text-[10px] font-bold uppercase px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-400/40">Leader</span>` : ''}
-                    ${isMe ? `<span class="ml-1 text-[10px] font-extrabold uppercase px-1.5 py-0.5 rounded bg-cyan-400 text-slate-950">Tu</span>` : ''}
-                  </div>
-                  <span class="${s.points >= 0 ? 'text-emerald-400' : 'text-rose-400'} font-extrabold shrink-0 text-right text-sm">
-                    ${s.points >= 0 ? '+' + s.points : s.points} pt turno
-                  </span>
-                </div>
-                ${breakdownHtml}
-                ${bonusNote}
-                <div class="mt-2 pt-1.5 border-t border-slate-800 flex items-center justify-between text-xs">
-                  <span class="text-slate-400">Totale parziale:</span>
-                  <span class="font-extrabold text-indigo-300">${runningTotal} punti</span>
-                </div>
-              </li>
-            `;
-          }).join('');
-
-          renderStandingsUI(playersObj);
+          renderTurnResultsForViewer(data);
 
           if (viewingStandings) {
             showScreen('screen-standings');
@@ -1163,16 +1256,16 @@
       const playerKeys = Object.keys(playersObj);
       if (playerKeys.length === 0) return;
 
-      let history = Array.isArray(currentGameState.leaderHistory) ? [...currentGameState.leaderHistory] : [];
-      let availableLeaders = playerKeys.filter(k => !history.includes(k));
-      if (availableLeaders.length === 0) {
+      let history = Array.isArray(currentGameState.targetHistory) ? [...currentGameState.targetHistory] : [];
+      let availableTargets = playerKeys.filter(k => !history.includes(k));
+      if (availableTargets.length === 0) {
         history = [];
-        availableLeaders = [...playerKeys];
+        availableTargets = [...playerKeys];
       }
 
-      const nextLeaderKey = availableLeaders[Math.floor(Math.random() * availableLeaders.length)];
-      const nextLeaderName = (playersObj[nextLeaderKey] && playersObj[nextLeaderKey].name) || nextLeaderKey;
-      history.push(nextLeaderKey);
+      const nextTargetKey = availableTargets[Math.floor(Math.random() * availableTargets.length)];
+      const nextTargetName = (playersObj[nextTargetKey] && playersObj[nextTargetKey].name) || nextTargetKey;
+      history.push(nextTargetKey);
 
       const pool = Array.isArray(currentGameState.questions) && currentGameState.questions.length > 0
         ? currentGameState.questions
@@ -1193,12 +1286,12 @@
       roomRef.update({
         state: 'playing',
         roundNumber: nextRoundNumber,
-        currentLeader: nextLeaderKey,
-        currentLeaderName: nextLeaderName,
+        currentTarget: nextTargetKey,
+        currentTargetName: nextTargetName,
         currentQuestion: question,
-        leaderHistory: history,
+        targetHistory: history,
         usedQuestionIndices: usedIndices,
-        leaderTimerDeadline: null,
+        targetTimerDeadline: null,
         votes: null
       });
     }
@@ -1369,17 +1462,19 @@
 
       if (
         currentGameState &&
-        myPlayerKey === currentGameState.currentLeader &&
-        !currentGameState.leaderTimerDeadline
+        myPlayerKey === currentGameState.currentTarget &&
+        !currentGameState.targetTimerDeadline
       ) {
-        updates['leaderTimerDeadline'] = Date.now() + 60000;
+        updates['targetTimerDeadline'] = Date.now() + 60000;
       }
 
       roomRef.update(updates);
     }
 
     function calculateAndPushResults(data) {
-      const leaderRanking = Array.isArray(data.votes[data.currentLeader]) ? data.votes[data.currentLeader] : [];
+      const targetKey = data.currentTarget;
+      const targetRanking = Array.isArray(data.votes[targetKey]) ? data.votes[targetKey] : [];
+      const targetBonusEnabled = Boolean(data.targetBonusEnabled);
       const roundScores = [];
       const updatedPlayers = {};
 
@@ -1390,8 +1485,8 @@
         };
       });
 
-      const optionGuessedCounts = leaderRanking.map(() => 0);
-      const guesserKeys = Object.keys(updatedPlayers).filter(k => k !== data.currentLeader);
+      const optionGuessedCounts = targetRanking.map(() => 0);
+      const guesserKeys = Object.keys(updatedPlayers).filter(k => k !== targetKey);
 
       guesserKeys.forEach(playerKey => {
         const displayName = updatedPlayers[playerKey].name;
@@ -1401,7 +1496,7 @@
         const breakdown = [];
 
         pVote.forEach((item, idx) => {
-          const isHit = item === leaderRanking[idx];
+          const isHit = item === targetRanking[idx];
           let slotPts = 0;
           if (isHit) {
             matches++;
@@ -1430,7 +1525,8 @@
         roundScores.push({
           playerKey: playerKey,
           name: displayName,
-          isLeader: false,
+          isTarget: false,
+          matches: matches,
           points: pts,
           runningTotal: updatedPlayers[playerKey].score,
           detail: `${matches}/5 indovinate`,
@@ -1440,18 +1536,19 @@
         });
       });
 
-      const allOptionsGuessedByAtLeastOne = leaderRanking.length === 5 && optionGuessedCounts.every(c => c >= 1);
-      const leaderBonusPoints = allOptionsGuessedByAtLeastOne ? 3 : 0;
+      const allOptionsGuessedByAtLeastOne = targetRanking.length === 5 && optionGuessedCounts.every(c => c >= 1);
+      const targetBonusEarned = targetBonusEnabled && allOptionsGuessedByAtLeastOne;
+      const targetBonusPoints = targetBonusEarned ? 3 : 0;
 
-      if (updatedPlayers[data.currentLeader]) {
-        updatedPlayers[data.currentLeader].score += leaderBonusPoints;
+      if (updatedPlayers[targetKey]) {
+        updatedPlayers[targetKey].score += targetBonusPoints;
       }
 
-      const leaderDisplayName = (updatedPlayers[data.currentLeader] && updatedPlayers[data.currentLeader].name)
-        || data.currentLeaderName
-        || data.currentLeader;
+      const targetDisplayName = (updatedPlayers[targetKey] && updatedPlayers[targetKey].name)
+        || data.currentTargetName
+        || targetKey;
 
-      const leaderBreakdown = leaderRanking.map((opt, idx) => ({
+      const targetBreakdown = targetRanking.map((opt, idx) => ({
         position: idx + 1,
         option: opt,
         isHit: optionGuessedCounts[idx] > 0,
@@ -1459,20 +1556,21 @@
       }));
 
       roundScores.unshift({
-        playerKey: data.currentLeader,
-        name: leaderDisplayName,
-        isLeader: true,
-        points: leaderBonusPoints,
-        runningTotal: updatedPlayers[data.currentLeader] ? updatedPlayers[data.currentLeader].score : 0,
-        detail: allOptionsGuessedByAtLeastOne ? "Bonus Leader +3 pt" : "Nessun bonus Leader",
-        summaryLabel: allOptionsGuessedByAtLeastOne ? "Bonus Leader +3 pt" : "0 pt bonus",
-        bonusNote: allOptionsGuessedByAtLeastOne
+        playerKey: targetKey,
+        name: targetDisplayName,
+        isTarget: true,
+        matches: 0,
+        points: targetBonusPoints,
+        runningTotal: updatedPlayers[targetKey] ? updatedPlayers[targetKey].score : 0,
+        detail: targetBonusEarned ? "Bonus Bersaglio +3 pt" : "0 pt bonus",
+        summaryLabel: targetBonusEarned ? "Bonus Bersaglio +3 pt" : "0 pt bonus",
+        bonusNote: targetBonusEarned
           ? "Tutte le 5 opzioni indovinate da almeno un giocatore: +3 pt!"
-          : "Bonus +3 pt non sbloccato (serve almeno 1 indovinato per opzione)",
-        breakdown: leaderBreakdown
+          : (!targetBonusEnabled ? "Bonus bersaglio disattivato per questa partita" : "Bonus +3 pt non sbloccato"),
+        breakdown: targetBreakdown
       });
 
-      const optionStats = leaderRanking.map((opt, idx) => ({
+      const optionStats = targetRanking.map((opt, idx) => ({
         position: idx + 1,
         option: opt,
         guessedCount: optionGuessedCounts[idx]
@@ -1480,10 +1578,11 @@
 
       roomRef.update({
         state: 'results',
-        leaderTimerDeadline: null,
-        leaderRanking: leaderRanking,
+        targetTimerDeadline: null,
+        targetRanking: targetRanking,
         optionStats: optionStats,
-        leaderBonusEarned: allOptionsGuessedByAtLeastOne,
+        targetBonusEnabled: targetBonusEnabled,
+        targetBonusEarned: targetBonusEarned,
         roundScores: roundScores,
         players: updatedPlayers
       });
