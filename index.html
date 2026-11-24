@@ -11,8 +11,27 @@
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
   <style>
-    .drag-item { touch-action: none; cursor: grab; }
-    .drag-item:active { cursor: grabbing; }
+    .drag-row {
+      touch-action: none;
+      user-select: none;
+      -webkit-user-select: none;
+      transition: transform 0.12s ease, box-shadow 0.12s ease, border-color 0.12s ease;
+    }
+    .drag-row.dragging {
+      position: relative;
+      z-index: 30;
+      border-color: #818cf8;
+      background-color: #1e293b;
+      box-shadow: 0 12px 24px -6px rgba(99, 102, 241, 0.45);
+      transform: scale(1.02);
+    }
+    .drag-handle {
+      touch-action: none;
+      cursor: grab;
+    }
+    .drag-handle:active {
+      cursor: grabbing;
+    }
   </style>
 </head>
 <body class="bg-slate-900 text-slate-100 min-h-screen flex flex-col justify-between font-sans">
@@ -100,13 +119,14 @@
       </div>
 
       <p id="role-instruction" class="text-xs text-center text-slate-400">
-        Ordina le risposte dalla preferita (1°) alla meno preferita (5°):
+        Trascina le opzioni per ordinarle da 1 (preferita) a 5 (meno preferita):
       </p>
 
+      <!-- Lista ordinabile 1..5 con drag mobile + frecce -->
       <ul id="options-list" class="space-y-2"></ul>
 
       <button type="button" id="submit-vote-btn" onclick="submitRanking()" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 rounded-xl shadow-lg transition transform active:scale-95">
-        Conferma la mia Classifica
+        Conferma Classifica (1 → 5)
       </button>
 
       <div id="waiting-others" class="hidden text-center py-4 space-y-2">
@@ -121,16 +141,24 @@
       <div class="bg-slate-800 p-5 rounded-2xl border border-slate-700 shadow-xl text-center space-y-4">
         <h2 class="text-xl font-bold text-emerald-400">Risultati Turno</h2>
 
-        <div class="bg-slate-900 p-3 rounded-xl border border-slate-700">
-          <h4 class="text-xs text-slate-400 mb-2">Classifica Reale di <span id="res-leader-name" class="text-amber-400 font-semibold"></span>:</h4>
-          <ol id="actual-ranking-list" class="text-xs text-left space-y-1 list-decimal list-inside text-slate-200"></ol>
+        <!-- Classifica del Leader e conteggio indovinati per singola opzione -->
+        <div class="bg-slate-900 p-3 rounded-xl border border-slate-700 text-left space-y-2">
+          <div class="flex items-center justify-between gap-2">
+            <h4 class="text-xs text-slate-400">
+              Classifica di <span id="res-leader-name" class="text-amber-400 font-semibold"></span> (1 → 5):
+            </h4>
+            <span id="leader-bonus-badge" class="text-[11px] px-2 py-0.5 rounded-full font-semibold"></span>
+          </div>
+          <ol id="actual-ranking-list" class="text-xs space-y-1.5 text-slate-200"></ol>
         </div>
 
-        <div class="border-t border-slate-700 pt-3">
-          <h4 class="text-sm font-semibold text-slate-300 mb-2">Punteggi del Turno:</h4>
+        <!-- Punteggi del Turno e opzioni indovinate per ciascun giocatore -->
+        <div class="border-t border-slate-700 pt-3 text-left">
+          <h4 class="text-sm font-semibold text-slate-300 mb-2 text-center">Punteggi del Turno & Opzioni Indovinate:</h4>
           <ul id="round-scores-list" class="space-y-2 text-xs"></ul>
         </div>
 
+        <!-- Classifica Generale -->
         <div class="border-t border-slate-700 pt-3">
           <h4 class="text-sm font-semibold text-slate-300 mb-2">Classifica Generale:</h4>
           <ul id="total-scores-list" class="space-y-1 text-xs"></ul>
@@ -169,6 +197,22 @@
     let questionsDeck = [];
     let userVote = [];
     let currentGameState = null;
+
+    // Stato Drag & Drop pointer (mobile + desktop)
+    let dragState = {
+      active: false,
+      pointerId: null,
+      sourceIndex: null,
+      currentIndex: null
+    };
+
+    const positionLabels = [
+      "1 • Più preferita",
+      "2 • Seconda",
+      "3 • Media",
+      "4 • Quarta",
+      "5 • Meno preferita"
+    ];
 
     const defaultQuestions = [
       { domanda: "Gusti di gelato", options: ["Cioccolato", "Fragola", "Pistacchio", "Limone", "Stracciatella"] },
@@ -215,7 +259,6 @@
         }
       });
 
-      // Test reale di lettura su 'rooms' per verificare accesso e regole del DB
       db.ref('rooms').limitToFirst(1).once('value')
         .then(() => {
           setFirebaseStatus('ok', 'Firebase connesso e leggibile');
@@ -234,7 +277,6 @@
       }, 6000);
     }
 
-    // Firebase non accetta ".", "$", "#", "[", "]", "/" nelle chiavi
     function sanitizeFirebaseKey(name) {
       return name.replace(/[.$#\[\]\/]/g, '_').trim();
     }
@@ -444,14 +486,16 @@
           document.getElementById('current-question-text').innerText = data.currentQuestion.domanda;
 
           if (myPlayerKey === data.currentLeader) {
-            document.getElementById('role-instruction').innerText = "Sei il Leader! Ordina le opzioni secondo le TUE vere preferenze:";
+            document.getElementById('role-instruction').innerText = "Sei il Leader! Trascina le opzioni per ordinarle da 1 (preferita) a 5 (meno preferita):";
           } else {
-            document.getElementById('role-instruction').innerText = `Indovina come ${leaderName} ordinerà le 5 opzioni:`;
+            document.getElementById('role-instruction').innerText = `Indovina l'ordine (1 → 5) di ${leaderName} trascinando le opzioni:`;
           }
 
           const hasVoted = data.votes && Object.prototype.hasOwnProperty.call(data.votes, myPlayerKey);
           if (!hasVoted) {
-            if (userVote.length === 0) userVote = [...data.currentQuestion.options];
+            if (!Array.isArray(userVote) || userVote.length === 0) {
+              userVote = [...data.currentQuestion.options];
+            }
             renderDraggableList();
             document.getElementById('submit-vote-btn').classList.remove('hidden');
             document.getElementById('waiting-others').classList.add('hidden');
@@ -471,14 +515,60 @@
           userVote = [];
           const leaderName = data.currentLeaderName || data.currentLeader;
           document.getElementById('res-leader-name').innerText = leaderName;
-          document.getElementById('actual-ranking-list').innerHTML = (data.leaderRanking || []).map(item => `<li>${item}</li>`).join('');
 
-          document.getElementById('round-scores-list').innerHTML = (data.roundScores || []).map(s => `
-            <li class="flex justify-between bg-slate-900 p-2 rounded border border-slate-700">
-              <span class="font-medium text-slate-200">${s.name}</span>
-              <span class="${s.points >= 0 ? 'text-emerald-400' : 'text-rose-400'} font-bold">${s.points >= 0 ? '+' + s.points : s.points} p.ti (${s.detail})</span>
-            </li>
-          `).join('');
+          const optionStats = Array.isArray(data.optionStats) ? data.optionStats : [];
+          const leaderRanking = Array.isArray(data.leaderRanking) ? data.leaderRanking : [];
+          const leaderBonusEarned = Boolean(data.leaderBonusEarned);
+
+          const bonusBadge = document.getElementById('leader-bonus-badge');
+          if (leaderBonusEarned) {
+            bonusBadge.textContent = "⭐ Leader +3 p.ti";
+            bonusBadge.className = "text-[11px] px-2 py-0.5 rounded-full font-semibold bg-amber-500/20 text-amber-300 border border-amber-400/40";
+          } else {
+            bonusBadge.textContent = "Leader +0 p.ti bonus";
+            bonusBadge.className = "text-[11px] px-2 py-0.5 rounded-full font-semibold bg-slate-800 text-slate-400 border border-slate-700";
+          }
+
+          if (optionStats.length > 0) {
+            document.getElementById('actual-ranking-list').innerHTML = optionStats.map((st, idx) => `
+              <li class="flex items-center justify-between gap-2 bg-slate-800/80 border border-slate-700/80 px-2.5 py-2 rounded-lg">
+                <div class="flex items-center gap-2 min-w-0">
+                  <span class="inline-flex items-center justify-center w-5 h-5 rounded-full bg-indigo-600/30 text-indigo-300 font-bold text-[11px] shrink-0">${idx + 1}</span>
+                  <span class="truncate text-slate-100 font-medium">${st.option}</span>
+                </div>
+                <span class="text-[11px] font-semibold shrink-0 px-2 py-0.5 rounded ${st.guessedCount > 0 ? 'bg-emerald-500/20 text-emerald-300' : 'bg-slate-700 text-slate-400'}">
+                  ${st.guessedCount} indovinati
+                </span>
+              </li>
+            `).join('');
+          } else {
+            document.getElementById('actual-ranking-list').innerHTML = leaderRanking.map((item, idx) => `
+              <li class="py-1"><span class="font-bold text-indigo-400 mr-1">${idx + 1}.</span> ${item}</li>
+            `).join('');
+          }
+
+          document.getElementById('round-scores-list').innerHTML = (data.roundScores || []).map(s => {
+            const guessedList = Array.isArray(s.guessedOptions) ? s.guessedOptions : [];
+            const guessedHtml = s.isLeader
+              ? `<p class="text-[11px] text-amber-300/90 mt-1">${s.detail}</p>`
+              : guessedList.length > 0
+                ? `<div class="mt-1.5 flex flex-wrap gap-1">
+                    ${guessedList.map(g => `<span class="text-[10px] bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 px-1.5 py-0.5 rounded">✓ Pos. ${g.position}: ${g.option}</span>`).join('')}
+                   </div>`
+                : `<p class="text-[11px] text-slate-400 mt-1">Nessuna opzione indovinata</p>`;
+
+            return `
+              <li class="bg-slate-900 p-2.5 rounded-lg border border-slate-700">
+                <div class="flex justify-between items-center gap-2">
+                  <span class="font-semibold text-slate-100">${s.name}</span>
+                  <span class="${s.points >= 0 ? 'text-emerald-400' : 'text-rose-400'} font-bold shrink-0">
+                    ${s.points >= 0 ? '+' + s.points : s.points} p.ti (${s.detail})
+                  </span>
+                </div>
+                ${guessedHtml}
+              </li>
+            `;
+          }).join('');
 
           document.getElementById('total-scores-list').innerHTML = Object.entries(playersObj).map(([key, p]) => {
             const label = (p && p.name) ? p.name : key;
@@ -550,17 +640,98 @@
 
     function renderDraggableList() {
       const ul = document.getElementById('options-list');
-      ul.innerHTML = userVote.map((opt, idx) => `
-        <li class="bg-slate-800 border border-slate-700 p-3 rounded-xl flex justify-between items-center text-sm font-medium">
-          <span class="text-indigo-400 font-bold mr-2">${idx + 1}°</span>
-          <span class="flex-grow text-slate-100">${opt}</span>
-          <div class="space-x-1">
-            <button type="button" onclick="moveOption(${idx}, -1)" class="bg-slate-700 hover:bg-slate-600 px-2 py-1 rounded text-xs">▲</button>
-            <button type="button" onclick="moveOption(${idx}, 1)" class="bg-slate-700 hover:bg-slate-600 px-2 py-1 rounded text-xs">▼</button>
-          </div>
-        </li>
-      `).join('');
+      ul.innerHTML = userVote.map((opt, idx) => {
+        const isDraggingThis = dragState.active && dragState.currentIndex === idx;
+        return `
+          <li data-index="${idx}"
+              onpointerdown="handleRowPointerDown(event, ${idx})"
+              class="drag-row ${isDraggingThis ? 'dragging' : ''} bg-slate-800 border border-slate-700 p-3 rounded-xl flex justify-between items-center gap-2 text-sm font-medium">
+            <div class="flex items-center gap-2.5 min-w-0 flex-grow">
+              <span class="drag-handle inline-flex items-center justify-center w-7 h-7 rounded-lg bg-indigo-600/25 border border-indigo-400/40 text-indigo-300 font-extrabold text-sm shrink-0" title="Trascina">
+                ${idx + 1}
+              </span>
+              <div class="min-w-0 flex-grow">
+                <div class="text-[10px] uppercase tracking-wider text-slate-400">${positionLabels[idx] || (idx + 1)}</div>
+                <div class="text-slate-100 truncate">${opt}</div>
+              </div>
+            </div>
+            <div class="flex items-center gap-1 shrink-0" onpointerdown="event.stopPropagation()">
+              <button type="button" onclick="moveOption(${idx}, -1)" ${idx === 0 ? 'disabled' : ''} class="bg-slate-700 hover:bg-slate-600 disabled:opacity-30 px-2.5 py-1.5 rounded-lg text-xs">▲</button>
+              <button type="button" onclick="moveOption(${idx}, 1)" ${idx === userVote.length - 1 ? 'disabled' : ''} class="bg-slate-700 hover:bg-slate-600 disabled:opacity-30 px-2.5 py-1.5 rounded-lg text-xs">▼</button>
+            </div>
+          </li>
+        `;
+      }).join('');
     }
+
+    function handleRowPointerDown(e, index) {
+      if (e.button !== undefined && e.button !== 0 && e.pointerType === 'mouse') return;
+      if (e.target.closest('button')) return;
+
+      dragState = {
+        active: true,
+        pointerId: e.pointerId,
+        sourceIndex: index,
+        currentIndex: index
+      };
+
+      const ul = document.getElementById('options-list');
+      if (ul && ul.setPointerCapture) {
+        try { ul.setPointerCapture(e.pointerId); } catch (_) {}
+      }
+
+      renderDraggableList();
+    }
+
+    document.addEventListener('pointermove', function(e) {
+      if (!dragState.active || e.pointerId !== dragState.pointerId) return;
+
+      const ul = document.getElementById('options-list');
+      if (!ul) return;
+
+      const rows = Array.from(ul.querySelectorAll('li[data-index]'));
+      if (rows.length === 0) return;
+
+      let targetIndex = dragState.currentIndex;
+      for (let i = 0; i < rows.length; i++) {
+        const rect = rows[i].getBoundingClientRect();
+        const midY = rect.top + rect.height / 2;
+        if (e.clientY < midY) {
+          targetIndex = i;
+          break;
+        }
+        targetIndex = rows.length - 1;
+      }
+
+      if (targetIndex !== dragState.currentIndex && targetIndex >= 0 && targetIndex < userVote.length) {
+        const [movedItem] = userVote.splice(dragState.currentIndex, 1);
+        userVote.splice(targetIndex, 0, movedItem);
+        dragState.currentIndex = targetIndex;
+        renderDraggableList();
+      }
+    });
+
+    function finishPointerDrag(e) {
+      if (!dragState.active) return;
+      if (e && e.pointerId !== undefined && dragState.pointerId !== null && e.pointerId !== dragState.pointerId) return;
+
+      const ul = document.getElementById('options-list');
+      if (ul && dragState.pointerId !== null && ul.releasePointerCapture) {
+        try { ul.releasePointerCapture(dragState.pointerId); } catch (_) {}
+      }
+
+      dragState = {
+        active: false,
+        pointerId: null,
+        sourceIndex: null,
+        currentIndex: null
+      };
+
+      renderDraggableList();
+    }
+
+    document.addEventListener('pointerup', finishPointerDrag);
+    document.addEventListener('pointercancel', finishPointerDrag);
 
     function moveOption(index, direction) {
       const target = index + direction;
@@ -576,7 +747,7 @@
     }
 
     function calculateAndPushResults(data) {
-      const leaderRanking = data.votes[data.currentLeader];
+      const leaderRanking = Array.isArray(data.votes[data.currentLeader]) ? data.votes[data.currentLeader] : [];
       const roundScores = [];
       const updatedPlayers = {};
 
@@ -587,34 +758,75 @@
         };
       });
 
-      Object.keys(updatedPlayers).forEach(playerKey => {
+      const optionGuessedCounts = leaderRanking.map(() => 0);
+      const guesserKeys = Object.keys(updatedPlayers).filter(k => k !== data.currentLeader);
+
+      guesserKeys.forEach(playerKey => {
         const displayName = updatedPlayers[playerKey].name;
-        if (playerKey === data.currentLeader) {
-          roundScores.push({ name: displayName, points: 0, detail: "Leader (0 p.ti)" });
-        } else {
-          const pVote = data.votes[playerKey] || [];
-          let pts = 0;
-          let matches = 0;
+        const pVote = Array.isArray(data.votes[playerKey]) ? data.votes[playerKey] : [];
+        let pts = 0;
+        let matches = 0;
+        const guessedOptions = [];
 
-          pVote.forEach((item, idx) => {
-            if (item === leaderRanking[idx]) {
-              matches++;
-              if (idx === 0 || idx === 4) pts += 2;
-              else pts += 1;
-            }
-          });
+        pVote.forEach((item, idx) => {
+          if (item === leaderRanking[idx]) {
+            matches++;
+            optionGuessedCounts[idx] += 1;
+            guessedOptions.push({
+              position: idx + 1,
+              option: item
+            });
+            if (idx === 0 || idx === 4) pts += 2;
+            else pts += 1;
+          }
+        });
 
-          if (matches === 5) pts += 3;
-          if (matches === 0) pts = -1;
+        if (matches === 5) pts += 3;
+        if (matches === 0) pts = -1;
 
-          updatedPlayers[playerKey].score += pts;
-          roundScores.push({ name: displayName, points: pts, detail: `${matches}/5 indovinate` });
-        }
+        updatedPlayers[playerKey].score += pts;
+        roundScores.push({
+          name: displayName,
+          isLeader: false,
+          points: pts,
+          detail: `${matches}/5 indovinate`,
+          guessedOptions: guessedOptions
+        });
       });
+
+      // Bonus Leader: +3 punti se ogni opzione (1..5) è stata indovinata da almeno 1 giocatore
+      const allOptionsGuessedByAtLeastOne = leaderRanking.length === 5 && optionGuessedCounts.every(c => c >= 1);
+      const leaderBonusPoints = allOptionsGuessedByAtLeastOne ? 3 : 0;
+
+      if (updatedPlayers[data.currentLeader]) {
+        updatedPlayers[data.currentLeader].score += leaderBonusPoints;
+      }
+
+      const leaderDisplayName = (updatedPlayers[data.currentLeader] && updatedPlayers[data.currentLeader].name)
+        || data.currentLeaderName
+        || data.currentLeader;
+
+      roundScores.unshift({
+        name: leaderDisplayName,
+        isLeader: true,
+        points: leaderBonusPoints,
+        detail: allOptionsGuessedByAtLeastOne
+          ? "Leader • Tutte le 5 opzioni indovinate!"
+          : "Leader • Bonus non sbloccato",
+        guessedOptions: []
+      });
+
+      const optionStats = leaderRanking.map((opt, idx) => ({
+        position: idx + 1,
+        option: opt,
+        guessedCount: optionGuessedCounts[idx]
+      }));
 
       roomRef.update({
         state: 'results',
         leaderRanking: leaderRanking,
+        optionStats: optionStats,
+        leaderBonusEarned: allOptionsGuessedByAtLeastOne,
         roundScores: roundScores,
         players: updatedPlayers
       });
