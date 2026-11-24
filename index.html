@@ -97,15 +97,37 @@
 
       <!-- Crea Stanza (Host) -->
       <div id="create-room-card" class="bg-slate-800 p-5 rounded-2xl border border-slate-700 shadow-xl space-y-4">
-        <h2 class="font-semibold text-lg text-indigo-300">Crea una Stanza (Host)</h2>
+        <div class="flex items-center justify-between gap-2">
+          <h2 class="font-semibold text-lg text-indigo-300">Crea una Stanza (Host)</h2>
+          <span id="deck-source-badge" class="text-[10px] font-semibold px-2.5 py-1 rounded-full bg-slate-900 text-slate-300 border border-slate-700">
+            Mazzo in caricamento...
+          </span>
+        </div>
 
-        <div>
-          <label for="csv-file-input" class="block text-xs font-medium text-slate-400 mb-1">Carica file domande (CSV opzionale)</label>
+        <div class="bg-slate-900/70 border border-slate-700/80 rounded-xl p-3 space-y-2.5">
+          <label for="csv-file-input" class="block text-xs font-medium text-slate-300">
+            Carica file domande CSV (opzionale)
+          </label>
           <input type="file" id="csv-file-input" accept=".csv,text/csv" class="w-full text-xs text-slate-400 file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-indigo-600 file:text-white hover:file:bg-indigo-700">
-          <p class="text-[11px] text-slate-500 mt-1">
+          <p class="text-[11px] text-slate-500">
             Formato: <i>domanda, domanda_giocatori, risp1, risp2, risp3, risp4, risp5</i>
           </p>
-          <p id="csv-status" class="text-xs text-emerald-400 mt-1 hidden"></p>
+          <p id="csv-status" class="text-xs text-emerald-400 hidden"></p>
+
+          <!-- Richiesta esplicita se sostituire le domande nel DB dopo il caricamento del CSV -->
+          <div id="csv-db-prompt" class="hidden bg-amber-950/50 border border-amber-400/50 rounded-xl p-3 space-y-2.5">
+            <p class="text-xs font-semibold text-amber-200 leading-snug">
+              Vuoi caricare queste domande anche nel DB, svuotandolo da quelle già presenti?
+            </p>
+            <div class="flex gap-2">
+              <button type="button" onclick="confirmReplaceDbWithCsv(true)" class="flex-1 bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold py-2 px-3 rounded-lg text-xs transition">
+                Sì, svuota e salva nel DB
+              </button>
+              <button type="button" onclick="confirmReplaceDbWithCsv(false)" class="flex-1 bg-slate-700 hover:bg-slate-600 text-slate-200 font-semibold py-2 px-3 rounded-lg text-xs transition">
+                No, usa solo CSV qui
+              </button>
+            </div>
+          </div>
         </div>
 
         <button type="button" id="create-room-btn" onclick="createRoom()" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 rounded-xl shadow-lg transition transform active:scale-95">
@@ -140,7 +162,6 @@
     <!-- SCHERMATA 3: GAME -->
     <div id="screen-game" class="hidden space-y-4">
 
-      <!-- Barra superiore: Contatore domanda + Leader + Stato invii -->
       <div class="bg-slate-800 p-3.5 rounded-xl border border-slate-700 space-y-2.5">
         <div class="flex items-center justify-between gap-2">
           <span id="question-counter-badge" class="text-[11px] font-extrabold uppercase tracking-wider px-2.5 py-1 rounded-full bg-indigo-500/20 text-indigo-300 border border-indigo-400/40">
@@ -162,7 +183,6 @@
         </div>
       </div>
 
-      <!-- Timer 1 minuto attivo appena il Leader ha inviato -->
       <div id="leader-timer-banner" class="hidden bg-amber-950/60 border border-amber-400/60 rounded-xl p-3 text-center space-y-1">
         <div class="text-[11px] uppercase tracking-wider font-bold text-amber-300">
           ⏱️ Il Leader ha inviato! Tempo rimasto:
@@ -173,7 +193,6 @@
         </p>
       </div>
 
-      <!-- Testo della domanda -->
       <div class="bg-indigo-950/60 border border-indigo-500/40 p-4 rounded-xl text-center">
         <h3 id="current-question-text" class="text-base font-semibold text-indigo-200">Caricamento domanda...</h3>
       </div>
@@ -182,7 +201,6 @@
         Afferra l'ancora ⋮⋮ per trascinare le opzioni in stile Trello da 1 (preferita) a 5 (meno preferita):
       </p>
 
-      <!-- Lista ordinabile 1..5 con ancora grafica + effetto Trello + frecce -->
       <ul id="options-list" class="space-y-2"></ul>
 
       <button type="button" id="submit-vote-btn" onclick="submitRanking()" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 rounded-xl shadow-lg transition transform active:scale-95">
@@ -208,14 +226,12 @@
           <span class="w-16"></span>
         </div>
 
-        <!-- Riepilogo personale del giocatore per il turno appena concluso -->
         <div id="my-round-summary" class="bg-indigo-950/50 border border-indigo-500/40 p-3.5 rounded-xl text-left">
           <div class="text-[11px] uppercase tracking-wider text-indigo-300 font-semibold">Il tuo esito nel turno</div>
           <div id="my-round-delta" class="text-lg font-extrabold mt-0.5">---</div>
           <div id="my-round-total" class="text-xs text-slate-300 mt-1">Totale parziale: ---</div>
         </div>
 
-        <!-- Classifica del Leader e conteggio indovinati per singola opzione -->
         <div class="bg-slate-900 p-3 rounded-xl border border-slate-700 text-left space-y-2">
           <div class="flex items-center justify-between gap-2">
             <h4 class="text-xs text-slate-400">
@@ -226,7 +242,6 @@
           <ol id="actual-ranking-list" class="text-xs space-y-1.5 text-slate-200"></ol>
         </div>
 
-        <!-- Dettaglio per ogni giocatore (incluso Leader): punteggio turno, singole posizioni/domande, bonus e totale parziale -->
         <div class="border-t border-slate-700 pt-3 text-left">
           <h4 class="text-sm font-semibold text-slate-300 mb-2 text-center">Dettaglio Giocatori (Turno, Domande/Posizioni, Bonus e Totale):</h4>
           <ul id="round-scores-list" class="space-y-2.5 text-xs"></ul>
@@ -246,10 +261,8 @@
           <p class="text-xs text-slate-400 mt-1">Ordine decrescente dal punteggio più alto</p>
         </div>
 
-        <!-- Podio stilizzato primi 3 -->
         <div id="podium-container" class="pt-2"></div>
 
-        <!-- Lista tutti gli altri giocatori -->
         <div id="other-standings-section" class="border-t border-slate-700 pt-4 space-y-2 hidden">
           <h3 class="text-xs uppercase tracking-wider text-slate-400 font-semibold">Altri giocatori</h3>
           <ul id="other-standings-list" class="space-y-2 text-sm"></ul>
@@ -272,7 +285,6 @@
   </main>
 
   <script>
-    // Configurazione Firebase per IndovinaMI
     const firebaseConfig = {
       apiKey: "AIzaSyDOddZmPUJS8UDE71HoMP6Yy3wNz-WP8eI",
       authDomain: "indovinami-50f89.firebaseapp.com",
@@ -283,17 +295,19 @@
       appId: "1:148257553342:web:e889913a39bd27b38a17ef"
     };
 
-    // Inizializza Firebase
     firebase.initializeApp(firebaseConfig);
     const db = firebase.database();
+    const questionBankRef = db.ref('questionBank');
 
-    // Stato dell'applicazione
     let roomRef = null;
     let roomCode = '';
     let myNickname = '';
     let myPlayerKey = '';
     let isHost = false;
-    let questionsDeck = [];
+    let dbQuestionsDeck = [];
+    let csvQuestionsDeck = [];
+    let hasLoadedCsv = false;
+    let pendingCsvDbDecision = false;
     let userVote = [];
     let currentGameState = null;
     let viewingStandings = false;
@@ -301,7 +315,6 @@
     let timerInterval = null;
     let autoSubmitTriggeredForRound = null;
 
-    // Stato Drag & Drop stile Trello (mobile + desktop)
     let dragState = {
       active: false,
       pointerId: null,
@@ -361,6 +374,103 @@
       }
     ];
 
+    function normalizeQuestionList(rawList) {
+      if (!Array.isArray(rawList)) return [];
+      return rawList
+        .filter(q => q && typeof q.domanda === 'string' && q.domanda.trim() && Array.isArray(q.options) && q.options.length === 5 && q.options.every(Boolean))
+        .map(q => ({
+          domanda: q.domanda.trim(),
+          domanda_giocatori: (typeof q.domanda_giocatori === 'string' && q.domanda_giocatori.trim())
+            ? q.domanda_giocatori.trim()
+            : q.domanda.trim(),
+          options: q.options.map(o => String(o).trim())
+        }));
+    }
+
+    function getActiveDeck() {
+      if (hasLoadedCsv && csvQuestionsDeck.length > 0) {
+        return csvQuestionsDeck;
+      }
+      if (dbQuestionsDeck.length > 0) {
+        return dbQuestionsDeck;
+      }
+      return [...defaultQuestions];
+    }
+
+    function updateDeckBadge(sourceText, count) {
+      const badge = document.getElementById('deck-source-badge');
+      if (!badge) return;
+      badge.textContent = `${sourceText} (${count} domande)`;
+    }
+
+    function replaceDbQuestions(list) {
+      const cleanList = normalizeQuestionList(list);
+      if (cleanList.length === 0) return Promise.resolve();
+      // Svuota completamente il nodo questionBank e scrive le nuove domande dal CSV
+      return questionBankRef.remove().then(() => questionBankRef.set(cleanList));
+    }
+
+    function confirmReplaceDbWithCsv(shouldSaveToDb) {
+      const promptEl = document.getElementById('csv-db-prompt');
+      const statusEl = document.getElementById('csv-status');
+      pendingCsvDbDecision = false;
+      promptEl.classList.add('hidden');
+
+      if (!hasLoadedCsv || csvQuestionsDeck.length === 0) return;
+
+      if (shouldSaveToDb) {
+        statusEl.textContent = "⏳ Svuotamento DB e salvataggio domande CSV in corso...";
+        statusEl.classList.remove('hidden');
+
+        replaceDbQuestions(csvQuestionsDeck)
+          .then(() => {
+            dbQuestionsDeck = [...csvQuestionsDeck];
+            updateDeckBadge("CSV (salvato nel DB)", csvQuestionsDeck.length);
+            statusEl.textContent = `✅ Usate ${csvQuestionsDeck.length} domande del CSV e salvate nel DB (vecchie rimosse).`;
+            statusEl.classList.remove('hidden');
+          })
+          .catch((err) => {
+            updateDeckBadge("CSV attivo", csvQuestionsDeck.length);
+            statusEl.textContent = `⚠️ Usate ${csvQuestionsDeck.length} domande del CSV, ma errore salvataggio DB: ${err.message}`;
+            statusEl.classList.remove('hidden');
+          });
+      } else {
+        updateDeckBadge("CSV attivo (solo partita)", csvQuestionsDeck.length);
+        statusEl.textContent = `✅ Usate ${csvQuestionsDeck.length} domande del CSV solo per questa partita (DB invariato).`;
+        statusEl.classList.remove('hidden');
+      }
+    }
+
+    function loadQuestionBankFromFirebase() {
+      dbQuestionsDeck = [...defaultQuestions];
+      updateDeckBadge("Default", dbQuestionsDeck.length);
+
+      return questionBankRef.once('value')
+        .then((snap) => {
+          const dbQuestions = normalizeQuestionList(snap.val());
+          if (dbQuestions.length > 0) {
+            dbQuestionsDeck = dbQuestions;
+            if (!hasLoadedCsv) {
+              updateDeckBadge("Firebase DB", dbQuestionsDeck.length);
+            }
+          } else {
+            return replaceDbQuestions(defaultQuestions).then(() => {
+              dbQuestionsDeck = [...defaultQuestions];
+              if (!hasLoadedCsv) {
+                updateDeckBadge("Firebase DB", dbQuestionsDeck.length);
+              }
+            });
+          }
+        })
+        .catch((err) => {
+          console.warn('[IndovinaMI] Impossibile leggere /questionBank, uso domande predefinite:', err);
+          dbQuestionsDeck = [...defaultQuestions];
+          if (!hasLoadedCsv) {
+            updateDeckBadge("Locale", dbQuestionsDeck.length);
+          }
+        });
+    }
+
     function setFirebaseStatus(state, message) {
       const badge = document.getElementById('firebase-status-badge');
       const dot = document.getElementById('firebase-status-dot');
@@ -398,12 +508,12 @@
       db.ref('rooms').limitToFirst(1).once('value')
         .then(() => {
           setFirebaseStatus('ok', 'Firebase connesso e leggibile');
-          console.info('[IndovinaMI] Test Firebase riuscito: accesso al Realtime Database OK.');
+          return loadQuestionBankFromFirebase();
         })
         .catch((err) => {
           const reason = err && err.message ? err.message : 'Errore sconosciuto';
           setFirebaseStatus('error', `Firebase errore: ${reason}`);
-          console.error('[IndovinaMI] Test Firebase fallito:', err);
+          updateDeckBadge("Locale", defaultQuestions.length);
         });
 
       setTimeout(() => {
@@ -447,6 +557,7 @@
     document.getElementById('csv-file-input').addEventListener('change', function(e) {
       const file = e.target.files && e.target.files[0];
       const statusEl = document.getElementById('csv-status');
+      const promptEl = document.getElementById('csv-db-prompt');
       if (!file) return;
 
       const reader = new FileReader();
@@ -462,8 +573,6 @@
             const firstColLower = (cols[0] || '').replace(/^\uFEFF/, '').toLowerCase();
             if (index === 0 && (firstColLower === 'domanda' || firstColLower === 'domanda_leader')) return;
 
-            // Supporta formato a 7 colonne: domanda, domanda_giocatori, risp1..risp5
-            // oppure retrocompatibilità a 6 colonne: domanda, risp1..risp5
             if (cols.length >= 7 && cols[0] && cols.slice(2, 7).every(Boolean)) {
               const leaderQ = cols[0].replace(/^\uFEFF/, '');
               const playersQ = cols[1] ? cols[1].trim() : leaderQ;
@@ -482,12 +591,20 @@
             }
           });
 
-          if (parsed.length > 0) {
-            questionsDeck = parsed;
-            statusEl.textContent = `✅ Caricate ${parsed.length} domande da "${file.name}"`;
+          const normalized = normalizeQuestionList(parsed);
+          if (normalized.length > 0) {
+            csvQuestionsDeck = normalized;
+            hasLoadedCsv = true;
+            pendingCsvDbDecision = true;
+            updateDeckBadge("CSV attivo", normalized.length);
+            statusEl.textContent = `✅ Caricate ${normalized.length} domande da "${file.name}". Verranno usati i dati del CSV.`;
             statusEl.classList.remove('hidden');
+            promptEl.classList.remove('hidden');
           } else {
-            questionsDeck = [];
+            hasLoadedCsv = false;
+            csvQuestionsDeck = [];
+            pendingCsvDbDecision = false;
+            promptEl.classList.add('hidden');
             statusEl.classList.add('hidden');
             alert("Formato CSV non valido. Usa: domanda, domanda_giocatori, risp1, risp2, risp3, risp4, risp5.");
           }
@@ -525,12 +642,19 @@
       document.getElementById(id).classList.remove('hidden');
     }
 
-    function createRoom() {
+    async function createRoom() {
       const rawName = document.getElementById('player-nickname').value.trim();
       if (!rawName) return alert("Inserisci un Nickname!");
 
       const safeKey = sanitizeFirebaseKey(rawName);
       if (!safeKey) return alert("Inserisci un Nickname valido!");
+
+      if (hasLoadedCsv && pendingCsvDbDecision) {
+        const saveToDb = confirm(
+          "Hai caricato un file CSV: vuoi caricare queste domande anche nel DB, svuotandolo da quelle già presenti?"
+        );
+        confirmReplaceDbWithCsv(saveToDb);
+      }
 
       myNickname = rawName;
       myPlayerKey = safeKey;
@@ -538,9 +662,7 @@
       roomCode = Math.random().toString(36).substring(2, 6).toUpperCase();
       roomRef = db.ref('rooms/' + roomCode);
 
-      const deckToUse = (Array.isArray(questionsDeck) && questionsDeck.length > 0)
-        ? questionsDeck
-        : defaultQuestions;
+      const deckToUse = getActiveDeck();
 
       const btn = document.getElementById('create-room-btn');
       btn.disabled = true;
@@ -900,7 +1022,6 @@
           showScreen('screen-game');
         }
 
-        // L'Host calcola i risultati appena tutti hanno votato
         if (isHost && data.state === 'playing' && data.votes && Object.keys(data.votes).length === Object.keys(playersObj).length && Object.keys(playersObj).length > 0) {
           calculateAndPushResults(data);
         }
@@ -1055,7 +1176,7 @@
 
       const pool = Array.isArray(currentGameState.questions) && currentGameState.questions.length > 0
         ? currentGameState.questions
-        : defaultQuestions;
+        : getActiveDeck();
 
       let usedIndices = Array.isArray(currentGameState.usedQuestionIndices) ? [...currentGameState.usedQuestionIndices] : [];
       let availableIndices = pool.map((_, idx) => idx).filter(idx => !usedIndices.includes(idx));
@@ -1246,7 +1367,6 @@
       const updates = {};
       updates['votes/' + myPlayerKey] = userVote;
 
-      // Se chi invia è il Leader del turno, avvia il timer sincronizzato di 60 secondi per gli altri
       if (
         currentGameState &&
         myPlayerKey === currentGameState.currentLeader &&
@@ -1320,7 +1440,6 @@
         });
       });
 
-      // Bonus Leader: +3 punti se ogni opzione (1..5) è stata indovinata da almeno 1 giocatore
       const allOptionsGuessedByAtLeastOne = leaderRanking.length === 5 && optionGuessedCounts.every(c => c >= 1);
       const leaderBonusPoints = allOptionsGuessedByAtLeastOne ? 3 : 0;
 
@@ -1375,7 +1494,6 @@
       const roomParam = urlParams.get('room');
       if (roomParam) {
         document.getElementById('room-code-input').value = roomParam.toUpperCase();
-        // Nasconde l'opzione di creazione stanza quando si entra da QR Code con codice stanza
         document.getElementById('create-room-card').classList.add('hidden');
         document.getElementById('qr-invite-badge').classList.remove('hidden');
         document.getElementById('qr-invite-hint').classList.remove('hidden');
