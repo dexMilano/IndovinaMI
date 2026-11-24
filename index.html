@@ -20,7 +20,11 @@
   <!-- Header -->
   <header class="bg-slate-800 border-b border-slate-700 py-4 px-6 text-center shadow-md">
     <h1 class="text-2xl font-bold tracking-wide text-indigo-400">🎯 IndovinaMI</h1>
-    <p class="text-xs text-slate-400 mt-1">Indovina le preferenze del Leader!</p>
+    <p class="text-xs text-slate-400 mt-1">Chi mi conosce meglio di tutti?</p>
+    <div id="firebase-status-badge" class="mt-2 inline-flex items-center gap-2 text-[11px] px-3 py-1 rounded-full bg-slate-900 border border-slate-700 text-amber-300">
+      <span id="firebase-status-dot" class="w-2 h-2 rounded-full bg-amber-400 animate-pulse"></span>
+      <span id="firebase-status-text">Test connessione Firebase in corso...</span>
+    </div>
   </header>
 
   <!-- Content Container -->
@@ -40,11 +44,12 @@
 
         <div>
           <label for="csv-file-input" class="block text-xs font-medium text-slate-400 mb-1">Carica file domande (CSV opzionale)</label>
-          <input type="file" id="csv-file-input" accept=".csv" class="w-full text-xs text-slate-400 file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-indigo-600 file:text-white hover:file:bg-indigo-700">
+          <input type="file" id="csv-file-input" accept=".csv,text/csv" class="w-full text-xs text-slate-400 file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-indigo-600 file:text-white hover:file:bg-indigo-700">
           <p class="text-[11px] text-slate-500 mt-1">Formato: <i>domanda, risp1, risp2, risp3, risp4, risp5</i></p>
+          <p id="csv-status" class="text-xs text-emerald-400 mt-1 hidden"></p>
         </div>
 
-        <button onclick="createRoom()" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 rounded-xl shadow-lg transition transform active:scale-95">
+        <button type="button" id="create-room-btn" onclick="createRoom()" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 rounded-xl shadow-lg transition transform active:scale-95">
           Crea nuova Stanza
         </button>
       </div>
@@ -53,7 +58,7 @@
       <div class="bg-slate-800 p-5 rounded-2xl border border-slate-700 shadow-xl space-y-3">
         <h2 class="font-semibold text-lg text-indigo-300">Entra in una Stanza</h2>
         <input type="text" id="room-code-input" placeholder="Codice Stanza (es. ABCD)" class="w-full uppercase bg-slate-900 border border-slate-700 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-indigo-500">
-        <button onclick="joinRoom()" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 rounded-xl shadow-lg transition transform active:scale-95">
+        <button type="button" id="join-room-btn" onclick="joinRoom()" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 rounded-xl shadow-lg transition transform active:scale-95">
           Partecipa alla Partita
         </button>
       </div>
@@ -74,7 +79,7 @@
         </div>
 
         <div id="host-controls" class="hidden pt-4 border-t border-slate-700">
-          <button onclick="startGame()" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 rounded-xl shadow-lg transition transform active:scale-95">
+          <button type="button" onclick="startGame()" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 rounded-xl shadow-lg transition transform active:scale-95">
             Avvia Partita 🚀
           </button>
         </div>
@@ -100,7 +105,7 @@
 
       <ul id="options-list" class="space-y-2"></ul>
 
-      <button id="submit-vote-btn" onclick="submitRanking()" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 rounded-xl shadow-lg transition transform active:scale-95">
+      <button type="button" id="submit-vote-btn" onclick="submitRanking()" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 rounded-xl shadow-lg transition transform active:scale-95">
         Conferma la mia Classifica
       </button>
 
@@ -131,7 +136,7 @@
           <ul id="total-scores-list" class="space-y-1 text-xs"></ul>
         </div>
 
-        <button id="next-round-btn" onclick="nextRound()" class="hidden w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 rounded-xl shadow-lg transition">
+        <button type="button" id="next-round-btn" onclick="nextRound()" class="hidden w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 rounded-xl shadow-lg transition">
           Prossimo Turno ➡️
         </button>
       </div>
@@ -159,6 +164,7 @@
     let roomRef = null;
     let roomCode = '';
     let myNickname = '';
+    let myPlayerKey = '';
     let isHost = false;
     let questionsDeck = [];
     let userVote = [];
@@ -174,6 +180,64 @@
       { domanda: "Animale domestico ideale", options: ["Cane", "Gatto", "Pappagallo", "Coniglio", "Pesci rossi"] },
       { domanda: "Cibo da Fast Food preferito", options: ["Hamburger gourmet", "Patatine fritte", "Nuggets di pollo", "Pizza al taglio", "Kebab completo"] }
     ];
+
+    function setFirebaseStatus(state, message) {
+      const badge = document.getElementById('firebase-status-badge');
+      const dot = document.getElementById('firebase-status-dot');
+      const text = document.getElementById('firebase-status-text');
+
+      badge.className = 'mt-2 inline-flex items-center gap-2 text-[11px] px-3 py-1 rounded-full bg-slate-900 border ';
+      dot.className = 'w-2 h-2 rounded-full ';
+
+      if (state === 'ok') {
+        badge.className += 'border-emerald-500/40 text-emerald-300';
+        dot.className += 'bg-emerald-400';
+      } else if (state === 'error') {
+        badge.className += 'border-rose-500/40 text-rose-300';
+        dot.className += 'bg-rose-400';
+      } else {
+        badge.className += 'border-amber-500/40 text-amber-300';
+        dot.className += 'bg-amber-400 animate-pulse';
+      }
+
+      text.textContent = message;
+    }
+
+    function runFirebaseStartupTest() {
+      setFirebaseStatus('loading', 'Test connessione Firebase in corso...');
+
+      let connectedSeen = false;
+      const connectedRef = db.ref('.info/connected');
+
+      connectedRef.on('value', (snap) => {
+        if (snap.val() === true) {
+          connectedSeen = true;
+        }
+      });
+
+      // Test reale di lettura su 'rooms' per verificare accesso e regole del DB
+      db.ref('rooms').limitToFirst(1).once('value')
+        .then(() => {
+          setFirebaseStatus('ok', 'Firebase connesso e leggibile');
+          console.info('[IndovinaMI] Test Firebase riuscito: accesso al Realtime Database OK.');
+        })
+        .catch((err) => {
+          const reason = err && err.message ? err.message : 'Errore sconosciuto';
+          setFirebaseStatus('error', `Firebase errore: ${reason}`);
+          console.error('[IndovinaMI] Test Firebase fallito:', err);
+        });
+
+      setTimeout(() => {
+        if (!connectedSeen && document.getElementById('firebase-status-text').textContent.includes('in corso')) {
+          setFirebaseStatus('error', 'Firebase non raggiungibile (controlla URL DB o rete)');
+        }
+      }, 6000);
+    }
+
+    // Firebase non accetta ".", "$", "#", "[", "]", "/" nelle chiavi
+    function sanitizeFirebaseKey(name) {
+      return name.replace(/[.$#\[\]\/]/g, '_').trim();
+    }
 
     function parseCSVLine(line) {
       const result = [];
@@ -203,33 +267,45 @@
     }
 
     document.getElementById('csv-file-input').addEventListener('change', function(e) {
-      const file = e.target.files[0];
+      const file = e.target.files && e.target.files[0];
+      const statusEl = document.getElementById('csv-status');
       if (!file) return;
 
       const reader = new FileReader();
       reader.onload = function(evt) {
-        const text = evt.target.result;
-        const lines = text.split(/\r\n|\n/);
-        const parsed = [];
+        try {
+          const text = evt.target.result || '';
+          const lines = text.split(/\r\n|\n|\r/);
+          const parsed = [];
 
-        lines.forEach((line, index) => {
-          if (!line.trim()) return;
-          const cols = parseCSVLine(line);
-          if (index === 0 && cols[0] && cols[0].toLowerCase() === 'domanda') return;
-          if (cols.length >= 6 && cols[0] && cols.slice(1, 6).every(Boolean)) {
-            parsed.push({
-              domanda: cols[0],
-              options: [cols[1], cols[2], cols[3], cols[4], cols[5]]
-            });
+          lines.forEach((line, index) => {
+            if (!line.trim()) return;
+            const cols = parseCSVLine(line);
+            const firstColLower = (cols[0] || '').replace(/^\uFEFF/, '').toLowerCase();
+            if (index === 0 && firstColLower === 'domanda') return;
+            if (cols.length >= 6 && cols[0] && cols.slice(1, 6).every(Boolean)) {
+              parsed.push({
+                domanda: cols[0].replace(/^\uFEFF/, ''),
+                options: [cols[1], cols[2], cols[3], cols[4], cols[5]]
+              });
+            }
+          });
+
+          if (parsed.length > 0) {
+            questionsDeck = parsed;
+            statusEl.textContent = `✅ Caricate ${parsed.length} domande da "${file.name}"`;
+            statusEl.classList.remove('hidden');
+          } else {
+            questionsDeck = [];
+            statusEl.classList.add('hidden');
+            alert("Formato CSV non valido. Assicurati che ogni riga abbia: domanda, risp1, risp2, risp3, risp4, risp5.");
           }
-        });
-
-        if (parsed.length > 0) {
-          questionsDeck = parsed;
-          alert(`Caricate ${parsed.length} domande dal file CSV!`);
-        } else {
-          alert("Formato CSV non valido. Assicurati che ogni riga abbia: domanda, risp1, risp2, risp3, risp4, risp5.");
+        } catch (err) {
+          alert("Errore nella lettura del file CSV: " + err.message);
         }
+      };
+      reader.onerror = function() {
+        alert("Impossibile leggere il file selezionato.");
       };
       reader.readAsText(file, 'UTF-8');
     });
@@ -242,20 +318,316 @@
     }
 
     function createRoom() {
-      const name = document.getElementById('player-nickname').value.trim();
-      if (!name) return alert("Inserisci un Nickname!");
+      const rawName = document.getElementById('player-nickname').value.trim();
+      if (!rawName) return alert("Inserisci un Nickname!");
 
-      myNickname = name;
+      const safeKey = sanitizeFirebaseKey(rawName);
+      if (!safeKey) return alert("Inserisci un Nickname valido!");
+
+      myNickname = rawName;
+      myPlayerKey = safeKey;
       isHost = true;
       roomCode = Math.random().toString(36).substring(2, 6).toUpperCase();
       roomRef = db.ref('rooms/' + roomCode);
 
-      if (questionsDeck.length === 0) questionsDeck = [...defaultQuestions];
+      const deckToUse = (Array.isArray(questionsDeck) && questionsDeck.length > 0)
+        ? questionsDeck
+        : defaultQuestions;
+
+      const btn = document.getElementById('create-room-btn');
+      btn.disabled = true;
+      btn.textContent = "Creazione stanza...";
 
       const initialRoomData = {
         state: 'lobby',
         host: myNickname,
-        questions: questionsDeck,
+        questions: deckToUse,
         usedQuestionIndices: [],
         leaderHistory: [],
         players: {
+          [myPlayerKey]: { name: myNickname, score: 0 }
+        }
+      };
+
+      roomRef.set(initialRoomData).then(() => {
+        btn.disabled = false;
+        btn.textContent = "Crea nuova Stanza";
+        listenToRoom();
+        setupLobbyUI();
+      }).catch(err => {
+        btn.disabled = false;
+        btn.textContent = "Crea nuova Stanza";
+        alert("Errore nella creazione della stanza su Firebase: " + err.message);
+      });
+    }
+
+    function joinRoom() {
+      const rawName = document.getElementById('player-nickname').value.trim();
+      const code = document.getElementById('room-code-input').value.trim().toUpperCase();
+      if (!rawName) return alert("Inserisci un Nickname!");
+      if (!code) return alert("Inserisci il Codice Stanza!");
+
+      const safeKey = sanitizeFirebaseKey(rawName);
+      if (!safeKey) return alert("Inserisci un Nickname valido!");
+
+      myNickname = rawName;
+      myPlayerKey = safeKey;
+      isHost = false;
+      roomCode = code;
+      roomRef = db.ref('rooms/' + roomCode);
+
+      const btn = document.getElementById('join-room-btn');
+      btn.disabled = true;
+      btn.textContent = "Connessione...";
+
+      roomRef.once('value').then(snapshot => {
+        if (!snapshot.exists()) {
+          btn.disabled = false;
+          btn.textContent = "Partecipa alla Partita";
+          alert("Stanza non trovata!");
+          return;
+        }
+        roomRef.child('players/' + myPlayerKey).set({ name: myNickname, score: 0 }).then(() => {
+          btn.disabled = false;
+          btn.textContent = "Partecipa alla Partita";
+          listenToRoom();
+          setupLobbyUI();
+        });
+      }).catch(err => {
+        btn.disabled = false;
+        btn.textContent = "Partecipa alla Partita";
+        alert("Errore di connessione a Firebase: " + err.message);
+      });
+    }
+
+    function setupLobbyUI() {
+      document.getElementById('display-room-code').innerText = roomCode;
+      if (isHost) {
+        document.getElementById('host-controls').classList.remove('hidden');
+        document.getElementById('waiting-msg').classList.add('hidden');
+      } else {
+        document.getElementById('host-controls').classList.add('hidden');
+        document.getElementById('waiting-msg').classList.remove('hidden');
+      }
+
+      document.getElementById('qrcode-container').innerHTML = '';
+      new QRCode(document.getElementById('qrcode-container'), {
+        text: window.location.href.split('?')[0] + '?room=' + roomCode,
+        width: 128,
+        height: 128
+      });
+
+      showScreen('screen-lobby');
+    }
+
+    function listenToRoom() {
+      roomRef.off();
+      roomRef.on('value', snapshot => {
+        const data = snapshot.val();
+        if (!data) return;
+        currentGameState = data;
+
+        const playersObj = data.players || {};
+
+        if (data.state === 'lobby') {
+          const list = document.getElementById('players-list');
+          list.innerHTML = Object.entries(playersObj).map(([key, p]) => {
+            const label = (p && p.name) ? p.name : key;
+            return `<li class="font-medium text-slate-200">👤 ${label}</li>`;
+          }).join('');
+          showScreen('screen-lobby');
+        }
+
+        if (data.state === 'playing') {
+          const leaderName = data.currentLeaderName || data.currentLeader;
+          document.getElementById('current-leader-name').innerText = leaderName;
+          document.getElementById('current-question-text').innerText = data.currentQuestion.domanda;
+
+          if (myPlayerKey === data.currentLeader) {
+            document.getElementById('role-instruction').innerText = "Sei il Leader! Ordina le opzioni secondo le TUE vere preferenze:";
+          } else {
+            document.getElementById('role-instruction').innerText = `Indovina come ${leaderName} ordinerà le 5 opzioni:`;
+          }
+
+          const hasVoted = data.votes && Object.prototype.hasOwnProperty.call(data.votes, myPlayerKey);
+          if (!hasVoted) {
+            if (userVote.length === 0) userVote = [...data.currentQuestion.options];
+            renderDraggableList();
+            document.getElementById('submit-vote-btn').classList.remove('hidden');
+            document.getElementById('waiting-others').classList.add('hidden');
+          } else {
+            document.getElementById('submit-vote-btn').classList.add('hidden');
+            document.getElementById('waiting-others').classList.remove('hidden');
+          }
+
+          showScreen('screen-game');
+
+          if (isHost && data.votes && Object.keys(data.votes).length === Object.keys(playersObj).length) {
+            calculateAndPushResults(data);
+          }
+        }
+
+        if (data.state === 'results') {
+          userVote = [];
+          const leaderName = data.currentLeaderName || data.currentLeader;
+          document.getElementById('res-leader-name').innerText = leaderName;
+          document.getElementById('actual-ranking-list').innerHTML = (data.leaderRanking || []).map(item => `<li>${item}</li>`).join('');
+
+          document.getElementById('round-scores-list').innerHTML = (data.roundScores || []).map(s => `
+            <li class="flex justify-between bg-slate-900 p-2 rounded border border-slate-700">
+              <span class="font-medium text-slate-200">${s.name}</span>
+              <span class="${s.points >= 0 ? 'text-emerald-400' : 'text-rose-400'} font-bold">${s.points >= 0 ? '+' + s.points : s.points} p.ti (${s.detail})</span>
+            </li>
+          `).join('');
+
+          document.getElementById('total-scores-list').innerHTML = Object.entries(playersObj).map(([key, p]) => {
+            const label = (p && p.name) ? p.name : key;
+            return `
+              <li class="flex justify-between text-slate-300">
+                <span>${label}</span>
+                <span class="font-bold text-indigo-400">${p.score} p.ti</span>
+              </li>
+            `;
+          }).join('');
+
+          if (isHost) {
+            document.getElementById('next-round-btn').classList.remove('hidden');
+          } else {
+            document.getElementById('next-round-btn').classList.add('hidden');
+          }
+          showScreen('screen-results');
+        }
+      });
+    }
+
+    function startGame() {
+      nextRound();
+    }
+
+    function nextRound() {
+      if (!isHost) return;
+
+      const playersObj = currentGameState.players || {};
+      const playerKeys = Object.keys(playersObj);
+      if (playerKeys.length === 0) return;
+
+      let history = Array.isArray(currentGameState.leaderHistory) ? [...currentGameState.leaderHistory] : [];
+      let availableLeaders = playerKeys.filter(k => !history.includes(k));
+      if (availableLeaders.length === 0) {
+        history = [];
+        availableLeaders = [...playerKeys];
+      }
+
+      const nextLeaderKey = availableLeaders[Math.floor(Math.random() * availableLeaders.length)];
+      const nextLeaderName = (playersObj[nextLeaderKey] && playersObj[nextLeaderKey].name) || nextLeaderKey;
+      history.push(nextLeaderKey);
+
+      const pool = Array.isArray(currentGameState.questions) && currentGameState.questions.length > 0
+        ? currentGameState.questions
+        : defaultQuestions;
+
+      let usedIndices = Array.isArray(currentGameState.usedQuestionIndices) ? [...currentGameState.usedQuestionIndices] : [];
+      let availableIndices = pool.map((_, idx) => idx).filter(idx => !usedIndices.includes(idx));
+      if (availableIndices.length === 0) {
+        usedIndices = [];
+        availableIndices = pool.map((_, idx) => idx);
+      }
+
+      const chosenIndex = availableIndices[Math.floor(Math.random() * availableIndices.length)];
+      usedIndices.push(chosenIndex);
+      const question = pool[chosenIndex];
+
+      roomRef.update({
+        state: 'playing',
+        currentLeader: nextLeaderKey,
+        currentLeaderName: nextLeaderName,
+        currentQuestion: question,
+        leaderHistory: history,
+        usedQuestionIndices: usedIndices,
+        votes: null
+      });
+    }
+
+    function renderDraggableList() {
+      const ul = document.getElementById('options-list');
+      ul.innerHTML = userVote.map((opt, idx) => `
+        <li class="bg-slate-800 border border-slate-700 p-3 rounded-xl flex justify-between items-center text-sm font-medium">
+          <span class="text-indigo-400 font-bold mr-2">${idx + 1}°</span>
+          <span class="flex-grow text-slate-100">${opt}</span>
+          <div class="space-x-1">
+            <button type="button" onclick="moveOption(${idx}, -1)" class="bg-slate-700 hover:bg-slate-600 px-2 py-1 rounded text-xs">▲</button>
+            <button type="button" onclick="moveOption(${idx}, 1)" class="bg-slate-700 hover:bg-slate-600 px-2 py-1 rounded text-xs">▼</button>
+          </div>
+        </li>
+      `).join('');
+    }
+
+    function moveOption(index, direction) {
+      const target = index + direction;
+      if (target < 0 || target >= userVote.length) return;
+      const temp = userVote[index];
+      userVote[index] = userVote[target];
+      userVote[target] = temp;
+      renderDraggableList();
+    }
+
+    function submitRanking() {
+      roomRef.child('votes/' + myPlayerKey).set(userVote);
+    }
+
+    function calculateAndPushResults(data) {
+      const leaderRanking = data.votes[data.currentLeader];
+      const roundScores = [];
+      const updatedPlayers = {};
+
+      Object.entries(data.players || {}).forEach(([key, p]) => {
+        updatedPlayers[key] = {
+          name: (p && p.name) || key,
+          score: Number((p && p.score) || 0)
+        };
+      });
+
+      Object.keys(updatedPlayers).forEach(playerKey => {
+        const displayName = updatedPlayers[playerKey].name;
+        if (playerKey === data.currentLeader) {
+          roundScores.push({ name: displayName, points: 0, detail: "Leader (0 p.ti)" });
+        } else {
+          const pVote = data.votes[playerKey] || [];
+          let pts = 0;
+          let matches = 0;
+
+          pVote.forEach((item, idx) => {
+            if (item === leaderRanking[idx]) {
+              matches++;
+              if (idx === 0 || idx === 4) pts += 2;
+              else pts += 1;
+            }
+          });
+
+          if (matches === 5) pts += 3;
+          if (matches === 0) pts = -1;
+
+          updatedPlayers[playerKey].score += pts;
+          roundScores.push({ name: displayName, points: pts, detail: `${matches}/5 indovinate` });
+        }
+      });
+
+      roomRef.update({
+        state: 'results',
+        leaderRanking: leaderRanking,
+        roundScores: roundScores,
+        players: updatedPlayers
+      });
+    }
+
+    window.onload = function() {
+      const urlParams = new URLSearchParams(window.location.search);
+      const roomParam = urlParams.get('room');
+      if (roomParam) {
+        document.getElementById('room-code-input').value = roomParam.toUpperCase();
+      }
+      runFirebaseStartupTest();
+    };
+  </script>
+</body>
+</html>
