@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>IndovinaMI - Il Gioco delle Preferenze</title>
+  <title>IndovinaMI - Chi mi conosce meglio di tutti?</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 
@@ -15,21 +15,36 @@
       touch-action: none;
       user-select: none;
       -webkit-user-select: none;
-      transition: transform 0.12s ease, box-shadow 0.12s ease, border-color 0.12s ease;
+      transition: transform 0.14s cubic-bezier(0.2, 0.8, 0.2, 1), box-shadow 0.14s ease, border-color 0.14s ease, opacity 0.14s ease;
     }
     .drag-row.dragging {
       position: relative;
-      z-index: 30;
+      z-index: 40;
       border-color: #818cf8;
       background-color: #1e293b;
-      box-shadow: 0 12px 24px -6px rgba(99, 102, 241, 0.45);
-      transform: scale(1.02);
+      box-shadow: 0 18px 32px -8px rgba(15, 23, 42, 0.85), 0 0 0 1px rgba(129, 140, 248, 0.5);
+      transform: scale(1.03) rotate(1.2deg);
     }
-    .drag-handle {
+    .trello-drop-slot {
+      border: 2px dashed rgba(129, 140, 248, 0.65);
+      background: rgba(99, 102, 241, 0.12);
+      border-radius: 0.75rem;
+      min-height: 58px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      color: #a5b4fc;
+      transition: all 0.12s ease;
+    }
+    .drag-anchor {
       touch-action: none;
       cursor: grab;
     }
-    .drag-handle:active {
+    .drag-anchor:active {
       cursor: grabbing;
     }
   </style>
@@ -39,7 +54,7 @@
   <!-- Header -->
   <header class="bg-slate-800 border-b border-slate-700 py-4 px-6 text-center shadow-md">
     <h1 class="text-2xl font-bold tracking-wide text-indigo-400">🎯 IndovinaMI</h1>
-    <p class="text-xs text-slate-400 mt-1">Chi mi conosce meglio di tutti?</p>
+    <p class="text-xs text-slate-300 mt-1 font-medium">Chi mi conosce meglio di tutti?</p>
     <div id="firebase-status-badge" class="mt-2 inline-flex items-center gap-2 text-[11px] px-3 py-1 rounded-full bg-slate-900 border border-slate-700 text-amber-300">
       <span id="firebase-status-dot" class="w-2 h-2 rounded-full bg-amber-400 animate-pulse"></span>
       <span id="firebase-status-text">Test connessione Firebase in corso...</span>
@@ -50,35 +65,51 @@
   <main class="max-w-md w-full mx-auto p-4 flex-grow flex flex-col justify-center">
 
     <!-- SCHERMATA 1: HOME / NICKNAME / CREA O UNISCITI -->
-    <div id="screen-home" class="space-y-6">
+    <div id="screen-home" class="space-y-5">
 
       <div class="bg-slate-800 p-5 rounded-2xl border border-slate-700 shadow-xl space-y-3">
         <label for="player-nickname" class="block text-sm font-medium text-slate-300">Il tuo Nickname</label>
         <input type="text" id="player-nickname" placeholder="Inserisci il tuo nome..." class="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-indigo-500">
       </div>
 
+      <!-- Entra in Stanza -->
+      <div id="join-room-card" class="bg-slate-800 p-5 rounded-2xl border border-slate-700 shadow-xl space-y-3">
+        <div class="flex items-center justify-between gap-2">
+          <h2 class="font-semibold text-lg text-emerald-300">Entra in una Stanza</h2>
+          <span id="qr-invite-badge" class="hidden text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">
+            Invito QR
+          </span>
+        </div>
+        <p id="qr-invite-hint" class="hidden text-xs text-slate-400">
+          Sei arrivato tramite codice stanza. Inserisci il tuo Nickname e premi Partecipa!
+        </p>
+        <input type="text" id="room-code-input" placeholder="Codice Stanza (es. ABCD)" class="w-full uppercase bg-slate-900 border border-slate-700 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-emerald-500">
+        <button type="button" id="join-room-btn" onclick="joinRoom()" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 rounded-xl shadow-lg transition transform active:scale-95">
+          Partecipa alla Partita
+        </button>
+
+        <div id="show-create-option-wrapper" class="hidden pt-2 border-t border-slate-700/70 text-center">
+          <button type="button" onclick="revealCreateRoomCard()" class="text-xs text-indigo-300 hover:text-indigo-200 underline">
+            Vuoi invece creare una nuova stanza come Host?
+          </button>
+        </div>
+      </div>
+
       <!-- Crea Stanza (Host) -->
-      <div class="bg-slate-800 p-5 rounded-2xl border border-slate-700 shadow-xl space-y-4">
+      <div id="create-room-card" class="bg-slate-800 p-5 rounded-2xl border border-slate-700 shadow-xl space-y-4">
         <h2 class="font-semibold text-lg text-indigo-300">Crea una Stanza (Host)</h2>
 
         <div>
           <label for="csv-file-input" class="block text-xs font-medium text-slate-400 mb-1">Carica file domande (CSV opzionale)</label>
           <input type="file" id="csv-file-input" accept=".csv,text/csv" class="w-full text-xs text-slate-400 file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-indigo-600 file:text-white hover:file:bg-indigo-700">
-          <p class="text-[11px] text-slate-500 mt-1">Formato: <i>domanda, risp1, risp2, risp3, risp4, risp5</i></p>
+          <p class="text-[11px] text-slate-500 mt-1">
+            Formato: <i>domanda, domanda_giocatori, risp1, risp2, risp3, risp4, risp5</i>
+          </p>
           <p id="csv-status" class="text-xs text-emerald-400 mt-1 hidden"></p>
         </div>
 
         <button type="button" id="create-room-btn" onclick="createRoom()" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 rounded-xl shadow-lg transition transform active:scale-95">
           Crea nuova Stanza
-        </button>
-      </div>
-
-      <!-- Entra in Stanza -->
-      <div class="bg-slate-800 p-5 rounded-2xl border border-slate-700 shadow-xl space-y-3">
-        <h2 class="font-semibold text-lg text-indigo-300">Entra in una Stanza</h2>
-        <input type="text" id="room-code-input" placeholder="Codice Stanza (es. ABCD)" class="w-full uppercase bg-slate-900 border border-slate-700 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-indigo-500">
-        <button type="button" id="join-room-btn" onclick="joinRoom()" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 rounded-xl shadow-lg transition transform active:scale-95">
-          Partecipa alla Partita
         </button>
       </div>
 
@@ -109,29 +140,59 @@
     <!-- SCHERMATA 3: GAME -->
     <div id="screen-game" class="hidden space-y-4">
 
-      <div class="bg-slate-800 p-4 rounded-xl border border-slate-700 text-center">
-        <div class="text-xs text-slate-400">Leader di questo turno:</div>
-        <div id="current-leader-name" class="text-lg font-bold text-amber-400">---</div>
+      <!-- Barra superiore: Contatore domanda + Leader + Stato invii -->
+      <div class="bg-slate-800 p-3.5 rounded-xl border border-slate-700 space-y-2.5">
+        <div class="flex items-center justify-between gap-2">
+          <span id="question-counter-badge" class="text-[11px] font-extrabold uppercase tracking-wider px-2.5 py-1 rounded-full bg-indigo-500/20 text-indigo-300 border border-indigo-400/40">
+            Domanda 1 / 1
+          </span>
+          <span id="leader-submission-badge" class="text-[11px] font-semibold px-2.5 py-1 rounded-full bg-slate-900 text-slate-300 border border-slate-700">
+            Leader in attesa...
+          </span>
+        </div>
+
+        <div class="text-center pt-0.5">
+          <div class="text-[11px] text-slate-400">Leader di questo turno:</div>
+          <div id="current-leader-name" class="text-lg font-bold text-amber-400">---</div>
+        </div>
+
+        <div class="bg-slate-900/90 border border-slate-700/80 rounded-lg px-3 py-2 flex items-center justify-between text-xs">
+          <span class="text-slate-300 font-medium" id="submissions-count-text">Risposte inviate: 0 / 0</span>
+          <span class="text-slate-400" id="submissions-remaining-text">Restano: 0</span>
+        </div>
       </div>
 
+      <!-- Timer 1 minuto attivo appena il Leader ha inviato -->
+      <div id="leader-timer-banner" class="hidden bg-amber-950/60 border border-amber-400/60 rounded-xl p-3 text-center space-y-1">
+        <div class="text-[11px] uppercase tracking-wider font-bold text-amber-300">
+          ⏱️ Il Leader ha inviato! Tempo rimasto:
+        </div>
+        <div id="leader-countdown-display" class="text-2xl font-mono font-extrabold text-amber-400">01:00</div>
+        <p id="leader-timer-subtext" class="text-[11px] text-amber-200/80">
+          Allo scadere del minuto le risposte mancanti verranno inviate in automatico.
+        </p>
+      </div>
+
+      <!-- Testo della domanda -->
       <div class="bg-indigo-950/60 border border-indigo-500/40 p-4 rounded-xl text-center">
         <h3 id="current-question-text" class="text-base font-semibold text-indigo-200">Caricamento domanda...</h3>
       </div>
 
       <p id="role-instruction" class="text-xs text-center text-slate-400">
-        Trascina le opzioni per ordinarle da 1 (preferita) a 5 (meno preferita):
+        Afferra l'ancora ⋮⋮ per trascinare le opzioni in stile Trello da 1 (preferita) a 5 (meno preferita):
       </p>
 
-      <!-- Lista ordinabile 1..5 con drag mobile + frecce -->
+      <!-- Lista ordinabile 1..5 con ancora grafica + effetto Trello + frecce -->
       <ul id="options-list" class="space-y-2"></ul>
 
       <button type="button" id="submit-vote-btn" onclick="submitRanking()" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 rounded-xl shadow-lg transition transform active:scale-95">
         Conferma Classifica (1 → 5)
       </button>
 
-      <div id="waiting-others" class="hidden text-center py-4 space-y-2">
-        <div class="inline-block animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-indigo-500"></div>
-        <p class="text-xs text-slate-400">Voto inviato! In attesa degli altri giocatori...</p>
+      <div id="waiting-others" class="hidden text-center py-4 space-y-2 bg-slate-800/70 rounded-xl border border-slate-700 px-3">
+        <div class="inline-block animate-spin rounded-full h-7 w-7 border-t-2 border-b-2 border-indigo-500"></div>
+        <p class="text-xs font-medium text-emerald-300">Risposta inviata!</p>
+        <p id="waiting-status-detail" class="text-[11px] text-slate-400">In attesa degli altri giocatori...</p>
       </div>
 
     </div>
@@ -139,7 +200,13 @@
     <!-- SCHERMATA 4: RISULTATI DEL TURNO -->
     <div id="screen-results" class="hidden space-y-5">
       <div class="bg-slate-800 p-5 rounded-2xl border border-slate-700 shadow-xl text-center space-y-4">
-        <h2 class="text-xl font-bold text-emerald-400">Risultati del Turno</h2>
+        <div class="flex items-center justify-between gap-2">
+          <span id="results-question-counter" class="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300 border border-indigo-400/30">
+            Domanda 1 / 1
+          </span>
+          <h2 class="text-xl font-bold text-emerald-400">Risultati del Turno</h2>
+          <span class="w-16"></span>
+        </div>
 
         <!-- Riepilogo personale del giocatore per il turno appena concluso -->
         <div id="my-round-summary" class="bg-indigo-950/50 border border-indigo-500/40 p-3.5 rounded-xl text-left">
@@ -159,23 +226,23 @@
           <ol id="actual-ranking-list" class="text-xs space-y-1.5 text-slate-200"></ol>
         </div>
 
-        <!-- Punti guadagnati/persi, totale parziale e opzioni indovinate per ogni giocatore -->
+        <!-- Dettaglio per ogni giocatore (incluso Leader): punteggio turno, singole posizioni/domande, bonus e totale parziale -->
         <div class="border-t border-slate-700 pt-3 text-left">
-          <h4 class="text-sm font-semibold text-slate-300 mb-2 text-center">Punti del Turno e Totali Parziali:</h4>
-          <ul id="round-scores-list" class="space-y-2 text-xs"></ul>
+          <h4 class="text-sm font-semibold text-slate-300 mb-2 text-center">Dettaglio Giocatori (Turno, Domande/Posizioni, Bonus e Totale):</h4>
+          <ul id="round-scores-list" class="space-y-2.5 text-xs"></ul>
         </div>
 
         <button type="button" onclick="openStandingsScreen()" class="w-full bg-amber-500 hover:bg-amber-600 text-slate-950 font-extrabold py-3 rounded-xl shadow-lg transition transform active:scale-95">
-          Vai alla Classifica Complessiva 🏆
+          Vai alla Classifica Generale 🏆
         </button>
       </div>
     </div>
 
-    <!-- SCHERMATA 5: CLASSIFICA COMPLESSIVA -->
+    <!-- SCHERMATA 5: CLASSIFICA GENERALE -->
     <div id="screen-standings" class="hidden space-y-5">
       <div class="bg-slate-800 p-5 rounded-2xl border border-slate-700 shadow-xl space-y-5">
         <div class="text-center">
-          <h2 class="text-xl font-bold text-amber-400">🏆 Classifica Complessiva</h2>
+          <h2 class="text-xl font-bold text-amber-400">🏆 Classifica Generale</h2>
           <p class="text-xs text-slate-400 mt-1">Ordine decrescente dal punteggio più alto</p>
         </div>
 
@@ -231,13 +298,16 @@
     let currentGameState = null;
     let viewingStandings = false;
     let lastResultsRoundKey = null;
+    let timerInterval = null;
+    let autoSubmitTriggeredForRound = null;
 
-    // Stato Drag & Drop pointer (mobile + desktop)
+    // Stato Drag & Drop stile Trello (mobile + desktop)
     let dragState = {
       active: false,
       pointerId: null,
       sourceIndex: null,
-      currentIndex: null
+      currentIndex: null,
+      placeholderIndex: null
     };
 
     const positionLabels = [
@@ -249,14 +319,46 @@
     ];
 
     const defaultQuestions = [
-      { domanda: "Gusti di gelato", options: ["Cioccolato", "Fragola", "Pistacchio", "Limone", "Stracciatella"] },
-      { domanda: "Superpoteri da avere", options: ["Volare", "Invisibilità", "Leggere nel pensiero", "Viaggiare nel tempo", "Teletrasporto"] },
-      { domanda: "Genere di film preferito", options: ["Azione / Avventura", "Commedia", "Horror", "Fantascienza / Sci-Fi", "Drammatico"] },
-      { domanda: "Destinazione ideale per una vacanza", options: ["Spiaggia tropicale", "Montagna in inverno", "Città d'arte", "Campeggio nella natura", "Crociera nei Caraibi"] },
-      { domanda: "Condimento top sulla Pizza", options: ["Mozzarella & Pomodoro (Margherita)", "Salame piccante", "Funghi e Prosciutto", "Patatine & Salsiccia", "Ananas (Hawayana)"] },
-      { domanda: "Cosa fare in un weekend di pioggia", options: ["Serie TV / Film sotto le coperte", "Giocare ai videogiochi / Giochi da tavolo", "Leggere un buon libro", "Cucinare o fare dolci", "Dormire tutto il giorno"] },
-      { domanda: "Animale domestico ideale", options: ["Cane", "Gatto", "Pappagallo", "Coniglio", "Pesci rossi"] },
-      { domanda: "Cibo da Fast Food preferito", options: ["Hamburger gourmet", "Patatine fritte", "Nuggets di pollo", "Pizza al taglio", "Kebab completo"] }
+      {
+        domanda: "Quali sono i tuoi gusti di gelato preferiti?",
+        domanda_giocatori: "Quali sono i gusti di gelato preferiti di {leader}?",
+        options: ["Cioccolato", "Fragola", "Pistacchio", "Limone", "Stracciatella"]
+      },
+      {
+        domanda: "Quali superpoteri vorresti avere?",
+        domanda_giocatori: "Quali superpoteri vorrebbe avere {leader}?",
+        options: ["Volare", "Invisibilità", "Leggere nel pensiero", "Viaggiare nel tempo", "Teletrasporto"]
+      },
+      {
+        domanda: "Qual è il tuo genere di film preferito?",
+        domanda_giocatori: "Qual è il genere di film preferito di {leader}?",
+        options: ["Azione / Avventura", "Commedia", "Horror", "Fantascienza / Sci-Fi", "Drammatico"]
+      },
+      {
+        domanda: "Dove vorresti passare la tua vacanza ideale?",
+        domanda_giocatori: "Dove {leader} vorrebbe passare la sua vacanza ideale?",
+        options: ["Spiaggia tropicale", "Montagna in inverno", "Città d'arte", "Campeggio nella natura", "Crociera nei Caraibi"]
+      },
+      {
+        domanda: "Qual è il tuo condimento top sulla Pizza?",
+        domanda_giocatori: "Qual è il condimento top sulla Pizza per {leader}?",
+        options: ["Mozzarella & Pomodoro (Margherita)", "Salame piccante", "Funghi e Prosciutto", "Patatine & Salsiccia", "Ananas (Hawayana)"]
+      },
+      {
+        domanda: "Cosa preferisci fare in un weekend di pioggia?",
+        domanda_giocatori: "Cosa preferisce fare {leader} in un weekend di pioggia?",
+        options: ["Serie TV / Film sotto le coperte", "Giocare ai videogiochi / Giochi da tavolo", "Leggere un buon libro", "Cucinare o fare dolci", "Dormire tutto il giorno"]
+      },
+      {
+        domanda: "Qual è il tuo animale domestico ideale?",
+        domanda_giocatori: "Qual è l'animale domestico ideale per {leader}?",
+        options: ["Cane", "Gatto", "Pappagallo", "Coniglio", "Pesci rossi"]
+      },
+      {
+        domanda: "Qual è il tuo cibo da Fast Food preferito?",
+        domanda_giocatori: "Qual è il cibo da Fast Food preferito di {leader}?",
+        options: ["Hamburger gourmet", "Patatine fritte", "Nuggets di pollo", "Pizza al taglio", "Kebab completo"]
+      }
     ];
 
     function setFirebaseStatus(state, message) {
@@ -358,10 +460,23 @@
             if (!line.trim()) return;
             const cols = parseCSVLine(line);
             const firstColLower = (cols[0] || '').replace(/^\uFEFF/, '').toLowerCase();
-            if (index === 0 && firstColLower === 'domanda') return;
-            if (cols.length >= 6 && cols[0] && cols.slice(1, 6).every(Boolean)) {
+            if (index === 0 && (firstColLower === 'domanda' || firstColLower === 'domanda_leader')) return;
+
+            // Supporta formato a 7 colonne: domanda, domanda_giocatori, risp1..risp5
+            // oppure retrocompatibilità a 6 colonne: domanda, risp1..risp5
+            if (cols.length >= 7 && cols[0] && cols.slice(2, 7).every(Boolean)) {
+              const leaderQ = cols[0].replace(/^\uFEFF/, '');
+              const playersQ = cols[1] ? cols[1].trim() : leaderQ;
               parsed.push({
-                domanda: cols[0].replace(/^\uFEFF/, ''),
+                domanda: leaderQ,
+                domanda_giocatori: playersQ,
+                options: [cols[2], cols[3], cols[4], cols[5], cols[6]]
+              });
+            } else if (cols.length >= 6 && cols[0] && cols.slice(1, 6).every(Boolean)) {
+              const leaderQ = cols[0].replace(/^\uFEFF/, '');
+              parsed.push({
+                domanda: leaderQ,
+                domanda_giocatori: leaderQ,
                 options: [cols[1], cols[2], cols[3], cols[4], cols[5]]
               });
             }
@@ -374,7 +489,7 @@
           } else {
             questionsDeck = [];
             statusEl.classList.add('hidden');
-            alert("Formato CSV non valido. Assicurati che ogni riga abbia: domanda, risp1, risp2, risp3, risp4, risp5.");
+            alert("Formato CSV non valido. Usa: domanda, domanda_giocatori, risp1, risp2, risp3, risp4, risp5.");
           }
         } catch (err) {
           alert("Errore nella lettura del file CSV: " + err.message);
@@ -385,6 +500,23 @@
       };
       reader.readAsText(file, 'UTF-8');
     });
+
+    function formatQuestionForViewer(questionObj, leaderName, isViewerLeader) {
+      if (!questionObj) return "";
+      const safeLeader = leaderName || "il Leader";
+      if (isViewerLeader) {
+        return questionObj.domanda || "";
+      }
+      const rawPlayersQ = questionObj.domanda_giocatori || questionObj.domanda || "";
+      return rawPlayersQ
+        .replace(/<leader>/gi, safeLeader)
+        .replace(/\{leader\}/gi, safeLeader);
+    }
+
+    function revealCreateRoomCard() {
+      document.getElementById('create-room-card').classList.remove('hidden');
+      document.getElementById('show-create-option-wrapper').classList.add('hidden');
+    }
 
     function showScreen(id) {
       ['screen-home', 'screen-lobby', 'screen-game', 'screen-results', 'screen-standings'].forEach(s => {
@@ -421,6 +553,7 @@
         questions: deckToUse,
         usedQuestionIndices: [],
         leaderHistory: [],
+        leaderTimerDeadline: null,
         players: {
           [myPlayerKey]: { name: myNickname, score: 0 }
         }
@@ -497,6 +630,94 @@
       showScreen('screen-lobby');
     }
 
+    function clearRoundTimer() {
+      if (timerInterval) {
+        clearInterval(timerInterval);
+        timerInterval = null;
+      }
+      document.getElementById('leader-timer-banner').classList.add('hidden');
+    }
+
+    function formatSecondsMMSS(totalSeconds) {
+      const clamped = Math.max(0, Math.ceil(totalSeconds));
+      const mins = Math.floor(clamped / 60);
+      const secs = clamped % 60;
+      return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+    }
+
+    function syncLeaderTimerUI(data) {
+      const votesObj = data.votes || {};
+      const leaderKey = data.currentLeader;
+      const hasVoted = Object.prototype.hasOwnProperty.call(votesObj, myPlayerKey);
+      const deadline = data.leaderTimerDeadline;
+
+      if (data.state !== 'playing' || !deadline || hasVoted) {
+        if (timerInterval) {
+          clearInterval(timerInterval);
+          timerInterval = null;
+        }
+        document.getElementById('leader-timer-banner').classList.add('hidden');
+        return;
+      }
+
+      const banner = document.getElementById('leader-timer-banner');
+      const display = document.getElementById('leader-countdown-display');
+      banner.classList.remove('hidden');
+
+      const updateTick = () => {
+        const remainingSec = (deadline - Date.now()) / 1000;
+        display.textContent = formatSecondsMMSS(remainingSec);
+
+        if (remainingSec <= 0) {
+          clearInterval(timerInterval);
+          timerInterval = null;
+          display.textContent = "00:00";
+
+          const roundId = `${data.roundNumber || 0}_${leaderKey || ''}`;
+          if (!hasVoted && autoSubmitTriggeredForRound !== roundId) {
+            autoSubmitTriggeredForRound = roundId;
+            const fallbackVote = (Array.isArray(userVote) && userVote.length === 5)
+              ? userVote
+              : [...(data.currentQuestion.options || [])];
+            roomRef.child('votes/' + myPlayerKey).set(fallbackVote);
+          }
+        }
+      };
+
+      if (timerInterval) clearInterval(timerInterval);
+      updateTick();
+      timerInterval = setInterval(updateTick, 250);
+    }
+
+    function updateSubmissionsStatusUI(data) {
+      const playersObj = data.players || {};
+      const totalPlayers = Object.keys(playersObj).length;
+      const votesObj = data.votes || {};
+      const submittedCount = Object.keys(votesObj).length;
+      const remainingCount = Math.max(0, totalPlayers - submittedCount);
+
+      const leaderKey = data.currentLeader;
+      const leaderName = data.currentLeaderName || leaderKey || 'Leader';
+      const leaderVoted = Boolean(leaderKey && Object.prototype.hasOwnProperty.call(votesObj, leaderKey));
+
+      document.getElementById('submissions-count-text').textContent =
+        `Risposte inviate: ${submittedCount} / ${totalPlayers}`;
+      document.getElementById('submissions-remaining-text').textContent =
+        `Restano: ${remainingCount}`;
+
+      const leaderBadge = document.getElementById('leader-submission-badge');
+      if (leaderVoted) {
+        leaderBadge.textContent = `✅ Leader ${leaderName} ha inviato`;
+        leaderBadge.className = "text-[11px] font-semibold px-2.5 py-1 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/40";
+      } else {
+        leaderBadge.textContent = `⏳ Leader ${leaderName} non ha inviato`;
+        leaderBadge.className = "text-[11px] font-semibold px-2.5 py-1 rounded-full bg-slate-900 text-amber-300 border border-slate-700";
+      }
+
+      document.getElementById('waiting-status-detail').textContent =
+        `Inviate ${submittedCount} su ${totalPlayers} (restano ${remainingCount})${leaderVoted ? ` • ${leaderName} ha già inviato` : ''}.`;
+    }
+
     function getSortedStandings(playersObj) {
       const entries = Object.entries(playersObj || {}).map(([key, p]) => ({
         key: key,
@@ -559,7 +780,6 @@
         `;
       };
 
-      // Ordine visivo classico del podio: 2° a sinistra, 1° al centro, 3° a destra
       const secondPlace = topThree.find(p => p.rank === 2) || topThree[1] || null;
       const firstPlace = topThree.find(p => p.rank === 1) || topThree[0] || null;
       const thirdPlace = topThree.find(p => p.rank === 3) || topThree[2] || null;
@@ -629,6 +849,7 @@
         const playersObj = data.players || {};
 
         if (data.state === 'lobby') {
+          clearRoundTimer();
           viewingStandings = false;
           const list = document.getElementById('players-list');
           list.innerHTML = Object.entries(playersObj).map(([key, p]) => {
@@ -642,19 +863,31 @@
         if (data.state === 'playing') {
           viewingStandings = false;
           const leaderName = data.currentLeaderName || data.currentLeader;
-          document.getElementById('current-leader-name').innerText = leaderName;
-          document.getElementById('current-question-text').innerText = data.currentQuestion.domanda;
+          const isViewerLeader = myPlayerKey === data.currentLeader;
 
-          if (myPlayerKey === data.currentLeader) {
-            document.getElementById('role-instruction').innerText = "Sei il Leader! Trascina le opzioni per ordinarle da 1 (preferita) a 5 (meno preferita):";
+          const totalQ = Array.isArray(data.questions) && data.questions.length > 0 ? data.questions.length : defaultQuestions.length;
+          const currentQNum = Number(data.roundNumber || 1);
+          document.getElementById('question-counter-badge').textContent = `Domanda ${currentQNum} / ${totalQ}`;
+          document.getElementById('current-leader-name').innerText = leaderName;
+          document.getElementById('current-question-text').innerText = formatQuestionForViewer(
+            data.currentQuestion,
+            leaderName,
+            isViewerLeader
+          );
+
+          if (isViewerLeader) {
+            document.getElementById('role-instruction').innerText = "Sei il Leader! Trascina con l'ancora ⋮⋮ da 1 (preferita) a 5 (meno preferita):";
           } else {
-            document.getElementById('role-instruction').innerText = `Indovina l'ordine (1 → 5) di ${leaderName} trascinando le opzioni:`;
+            document.getElementById('role-instruction').innerText = `Indovina l'ordine (1 → 5) di ${leaderName} trascinando con l'ancora ⋮⋮:`;
           }
+
+          updateSubmissionsStatusUI(data);
+          syncLeaderTimerUI(data);
 
           const hasVoted = data.votes && Object.prototype.hasOwnProperty.call(data.votes, myPlayerKey);
           if (!hasVoted) {
             if (!Array.isArray(userVote) || userVote.length === 0) {
-              userVote = [...data.currentQuestion.options];
+              userVote = [...(data.currentQuestion.options || [])];
             }
             renderDraggableList();
             document.getElementById('submit-vote-btn').classList.remove('hidden');
@@ -668,17 +901,22 @@
         }
 
         // L'Host calcola i risultati appena tutti hanno votato
-        if (isHost && data.state === 'playing' && data.votes && Object.keys(data.votes).length === Object.keys(playersObj).length) {
+        if (isHost && data.state === 'playing' && data.votes && Object.keys(data.votes).length === Object.keys(playersObj).length && Object.keys(playersObj).length > 0) {
           calculateAndPushResults(data);
         }
 
         if (data.state === 'results') {
+          clearRoundTimer();
           userVote = [];
           const roundKey = `${data.roundNumber || 0}_${data.currentLeader || ''}`;
           if (lastResultsRoundKey !== roundKey) {
             lastResultsRoundKey = roundKey;
             viewingStandings = false;
           }
+
+          const totalQ = Array.isArray(data.questions) && data.questions.length > 0 ? data.questions.length : defaultQuestions.length;
+          const currentQNum = Number(data.roundNumber || 1);
+          document.getElementById('results-question-counter').textContent = `Domanda ${currentQNum} / ${totalQ}`;
 
           const leaderName = data.currentLeaderName || data.currentLeader;
           document.getElementById('res-leader-name').innerText = leaderName;
@@ -695,7 +933,7 @@
           if (myRoundEntry) {
             const pts = Number(myRoundEntry.points || 0);
             const sign = pts > 0 ? `+${pts}` : `${pts}`;
-            myDeltaEl.textContent = `${sign} punti in questo turno (${myRoundEntry.detail})`;
+            myDeltaEl.textContent = `${sign} punti in questo turno (${myRoundEntry.summaryLabel || myRoundEntry.detail})`;
             myDeltaEl.className = `text-lg font-extrabold mt-0.5 ${pts > 0 ? 'text-emerald-400' : pts < 0 ? 'text-rose-400' : 'text-amber-300'}`;
           } else {
             myDeltaEl.textContent = "Turno completato";
@@ -736,33 +974,46 @@
 
           document.getElementById('round-scores-list').innerHTML = roundScores.map(s => {
             const isMe = s.playerKey === myPlayerKey;
-            const guessedList = Array.isArray(s.guessedOptions) ? s.guessedOptions : [];
-            const guessedHtml = s.isLeader
-              ? `<p class="text-[11px] text-amber-300/90 mt-1">${s.detail}</p>`
-              : guessedList.length > 0
-                ? `<div class="mt-1.5 flex flex-wrap gap-1">
-                    ${guessedList.map(g => `<span class="text-[10px] bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 px-1.5 py-0.5 rounded">✓ Pos. ${g.position}: ${g.option}</span>`).join('')}
-                   </div>`
-                : `<p class="text-[11px] text-slate-400 mt-1">Nessuna opzione indovinata</p>`;
+            const breakdownItems = Array.isArray(s.breakdown) ? s.breakdown : [];
+            const bonusNote = s.bonusNote ? `<div class="text-[11px] text-amber-300 font-semibold mt-1.5">✨ ${s.bonusNote}</div>` : '';
+
+            const breakdownHtml = breakdownItems.length > 0
+              ? `<div class="mt-1.5 space-y-1 bg-slate-950/60 border border-slate-800 rounded-lg p-2">
+                  ${breakdownItems.map(b => `
+                    <div class="flex items-center justify-between gap-2 text-[11px]">
+                      <span class="truncate ${b.isHit ? 'text-emerald-300 font-medium' : 'text-slate-400'}">
+                        ${b.isHit ? '✓' : '•'} Pos. ${b.position}: ${b.option}
+                      </span>
+                      <span class="font-bold shrink-0 ${b.points > 0 ? 'text-emerald-400' : 'text-slate-500'}">
+                        ${b.points > 0 ? '+' + b.points + ' pt' : '0 pt'}
+                      </span>
+                    </div>
+                  `).join('')}
+                 </div>`
+              : `<p class="text-[11px] text-slate-400 mt-1">${s.detail || ''}</p>`;
 
             const runningTotal = typeof s.runningTotal === 'number'
               ? s.runningTotal
               : (playersObj[s.playerKey] && typeof playersObj[s.playerKey].score === 'number' ? playersObj[s.playerKey].score : 0);
 
             return `
-              <li class="bg-slate-900 p-2.5 rounded-lg border ${isMe ? 'border-cyan-400 ring-1 ring-cyan-400/60' : 'border-slate-700'}">
+              <li class="bg-slate-900 p-3 rounded-xl border ${isMe ? 'border-cyan-400 ring-1 ring-cyan-400/60' : 'border-slate-700'}">
                 <div class="flex justify-between items-start gap-2">
                   <div>
-                    <span class="font-semibold text-slate-100">${s.name}</span>
-                    ${isMe ? `<span class="ml-1.5 text-[10px] font-extrabold uppercase px-1.5 py-0.5 rounded bg-cyan-400 text-slate-950">Tu</span>` : ''}
-                    <div class="text-[11px] text-indigo-300 font-medium mt-0.5">Totale: ${runningTotal} pt</div>
+                    <span class="font-bold text-slate-100">${s.name}</span>
+                    ${s.isLeader ? `<span class="ml-1 text-[10px] font-bold uppercase px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-400/40">Leader</span>` : ''}
+                    ${isMe ? `<span class="ml-1 text-[10px] font-extrabold uppercase px-1.5 py-0.5 rounded bg-cyan-400 text-slate-950">Tu</span>` : ''}
                   </div>
-                  <span class="${s.points >= 0 ? 'text-emerald-400' : 'text-rose-400'} font-bold shrink-0 text-right">
-                    ${s.points >= 0 ? '+' + s.points : s.points} p.ti
-                    <div class="text-[10px] font-normal text-slate-400">${s.detail}</div>
+                  <span class="${s.points >= 0 ? 'text-emerald-400' : 'text-rose-400'} font-extrabold shrink-0 text-right text-sm">
+                    ${s.points >= 0 ? '+' + s.points : s.points} pt turno
                   </span>
                 </div>
-                ${guessedHtml}
+                ${breakdownHtml}
+                ${bonusNote}
+                <div class="mt-2 pt-1.5 border-t border-slate-800 flex items-center justify-between text-xs">
+                  <span class="text-slate-400">Totale parziale:</span>
+                  <span class="font-extrabold text-indigo-300">${runningTotal} punti</span>
+                </div>
               </li>
             `;
           }).join('');
@@ -786,6 +1037,7 @@
       if (!isHost) return;
 
       viewingStandings = false;
+      autoSubmitTriggeredForRound = null;
       const playersObj = currentGameState.players || {};
       const playerKeys = Object.keys(playersObj);
       if (playerKeys.length === 0) return;
@@ -825,45 +1077,94 @@
         currentQuestion: question,
         leaderHistory: history,
         usedQuestionIndices: usedIndices,
+        leaderTimerDeadline: null,
         votes: null
       });
     }
 
     function renderDraggableList() {
       const ul = document.getElementById('options-list');
-      ul.innerHTML = userVote.map((opt, idx) => {
-        const isDraggingThis = dragState.active && dragState.currentIndex === idx;
-        return `
-          <li data-index="${idx}"
-              onpointerdown="handleRowPointerDown(event, ${idx})"
-              class="drag-row ${isDraggingThis ? 'dragging' : ''} bg-slate-800 border border-slate-700 p-3 rounded-xl flex justify-between items-center gap-2 text-sm font-medium">
+      const itemsToRender = [...userVote];
+      const isDragging = dragState.active && dragState.currentIndex !== null && dragState.placeholderIndex !== null;
+
+      let html = '';
+      if (isDragging) {
+        const draggedValue = itemsToRender[dragState.currentIndex];
+        const remaining = itemsToRender.filter((_, i) => i !== dragState.currentIndex);
+        const clampedSlot = Math.max(0, Math.min(dragState.placeholderIndex, remaining.length));
+
+        const buildRow = (opt, displayIdx, isGhost) => `
+          <li data-slot-index="${displayIdx}"
+              class="drag-row ${isGhost ? 'dragging' : ''} bg-slate-800 border border-slate-700 p-3 rounded-xl flex justify-between items-center gap-2 text-sm font-medium">
             <div class="flex items-center gap-2.5 min-w-0 flex-grow">
-              <span class="drag-handle inline-flex items-center justify-center w-7 h-7 rounded-lg bg-indigo-600/25 border border-indigo-400/40 text-indigo-300 font-extrabold text-sm shrink-0" title="Trascina">
-                ${idx + 1}
+              <span class="drag-anchor inline-flex flex-col items-center justify-center w-8 h-9 rounded-lg bg-indigo-600/25 border border-indigo-400/50 text-indigo-200 shrink-0" title="Trascina qui">
+                <span class="text-[11px] leading-none tracking-tighter">⋮⋮</span>
+                <span class="text-[11px] font-extrabold leading-tight mt-0.5">${displayIdx + 1}</span>
               </span>
               <div class="min-w-0 flex-grow">
-                <div class="text-[10px] uppercase tracking-wider text-slate-400">${positionLabels[idx] || (idx + 1)}</div>
+                <div class="text-[10px] uppercase tracking-wider text-slate-400">${positionLabels[displayIdx] || (displayIdx + 1)}</div>
                 <div class="text-slate-100 truncate">${opt}</div>
               </div>
             </div>
-            <div class="flex items-center gap-1 shrink-0" onpointerdown="event.stopPropagation()">
-              <button type="button" onclick="moveOption(${idx}, -1)" ${idx === 0 ? 'disabled' : ''} class="bg-slate-700 hover:bg-slate-600 disabled:opacity-30 px-2.5 py-1.5 rounded-lg text-xs">▲</button>
-              <button type="button" onclick="moveOption(${idx}, 1)" ${idx === userVote.length - 1 ? 'disabled' : ''} class="bg-slate-700 hover:bg-slate-600 disabled:opacity-30 px-2.5 py-1.5 rounded-lg text-xs">▼</button>
-            </div>
           </li>
         `;
-      }).join('');
+
+        let displayCounter = 0;
+        for (let i = 0; i <= remaining.length; i++) {
+          if (i === clampedSlot) {
+            html += `
+              <li class="trello-drop-slot">
+                Posizione ${displayCounter + 1} • Rilascia qui
+              </li>
+            `;
+            html += buildRow(draggedValue, displayCounter, true);
+            displayCounter++;
+          }
+          if (i < remaining.length) {
+            html += buildRow(remaining[i], displayCounter, false);
+            displayCounter++;
+          }
+        }
+        ul.innerHTML = html;
+        return;
+      }
+
+      ul.innerHTML = itemsToRender.map((opt, idx) => `
+        <li data-index="${idx}"
+            class="drag-row bg-slate-800 border border-slate-700 p-3 rounded-xl flex justify-between items-center gap-2 text-sm font-medium">
+          <div class="flex items-center gap-2.5 min-w-0 flex-grow">
+            <button type="button"
+                    onpointerdown="handleAnchorPointerDown(event, ${idx})"
+                    aria-label="Trascina opzione ${idx + 1}"
+                    class="drag-anchor inline-flex flex-col items-center justify-center w-8 h-9 rounded-lg bg-indigo-600/25 hover:bg-indigo-600/40 border border-indigo-400/50 text-indigo-200 shrink-0 transition"
+                    title="Trascina per spostare">
+              <span class="text-[11px] leading-none tracking-tighter">⋮⋮</span>
+              <span class="text-[11px] font-extrabold leading-tight mt-0.5">${idx + 1}</span>
+            </button>
+            <div class="min-w-0 flex-grow">
+              <div class="text-[10px] uppercase tracking-wider text-slate-400">${positionLabels[idx] || (idx + 1)}</div>
+              <div class="text-slate-100 truncate">${opt}</div>
+            </div>
+          </div>
+          <div class="flex items-center gap-1 shrink-0">
+            <button type="button" onclick="moveOption(${idx}, -1)" ${idx === 0 ? 'disabled' : ''} class="bg-slate-700 hover:bg-slate-600 disabled:opacity-30 px-2.5 py-1.5 rounded-lg text-xs">▲</button>
+            <button type="button" onclick="moveOption(${idx}, 1)" ${idx === itemsToRender.length - 1 ? 'disabled' : ''} class="bg-slate-700 hover:bg-slate-600 disabled:opacity-30 px-2.5 py-1.5 rounded-lg text-xs">▼</button>
+          </div>
+        </li>
+      `).join('');
     }
 
-    function handleRowPointerDown(e, index) {
+    function handleAnchorPointerDown(e, index) {
       if (e.button !== undefined && e.button !== 0 && e.pointerType === 'mouse') return;
-      if (e.target.closest('button')) return;
+      e.preventDefault();
+      e.stopPropagation();
 
       dragState = {
         active: true,
         pointerId: e.pointerId,
         sourceIndex: index,
-        currentIndex: index
+        currentIndex: index,
+        placeholderIndex: index
       };
 
       const ul = document.getElementById('options-list');
@@ -880,24 +1181,22 @@
       const ul = document.getElementById('options-list');
       if (!ul) return;
 
-      const rows = Array.from(ul.querySelectorAll('li[data-index]'));
+      const rows = Array.from(ul.querySelectorAll('li.drag-row'));
       if (rows.length === 0) return;
 
-      let targetIndex = dragState.currentIndex;
+      let newSlot = rows.length - 1;
       for (let i = 0; i < rows.length; i++) {
         const rect = rows[i].getBoundingClientRect();
         const midY = rect.top + rect.height / 2;
         if (e.clientY < midY) {
-          targetIndex = i;
+          newSlot = i;
           break;
         }
-        targetIndex = rows.length - 1;
       }
 
-      if (targetIndex !== dragState.currentIndex && targetIndex >= 0 && targetIndex < userVote.length) {
-        const [movedItem] = userVote.splice(dragState.currentIndex, 1);
-        userVote.splice(targetIndex, 0, movedItem);
-        dragState.currentIndex = targetIndex;
+      newSlot = Math.max(0, Math.min(newSlot, userVote.length - 1));
+      if (newSlot !== dragState.placeholderIndex) {
+        dragState.placeholderIndex = newSlot;
         renderDraggableList();
       }
     });
@@ -911,11 +1210,21 @@
         try { ul.releasePointerCapture(dragState.pointerId); } catch (_) {}
       }
 
+      if (
+        dragState.currentIndex !== null &&
+        dragState.placeholderIndex !== null &&
+        dragState.currentIndex !== dragState.placeholderIndex
+      ) {
+        const [movedItem] = userVote.splice(dragState.currentIndex, 1);
+        userVote.splice(dragState.placeholderIndex, 0, movedItem);
+      }
+
       dragState = {
         active: false,
         pointerId: null,
         sourceIndex: null,
-        currentIndex: null
+        currentIndex: null,
+        placeholderIndex: null
       };
 
       renderDraggableList();
@@ -934,7 +1243,19 @@
     }
 
     function submitRanking() {
-      roomRef.child('votes/' + myPlayerKey).set(userVote);
+      const updates = {};
+      updates['votes/' + myPlayerKey] = userVote;
+
+      // Se chi invia è il Leader del turno, avvia il timer sincronizzato di 60 secondi per gli altri
+      if (
+        currentGameState &&
+        myPlayerKey === currentGameState.currentLeader &&
+        !currentGameState.leaderTimerDeadline
+      ) {
+        updates['leaderTimerDeadline'] = Date.now() + 60000;
+      }
+
+      roomRef.update(updates);
     }
 
     function calculateAndPushResults(data) {
@@ -957,23 +1278,33 @@
         const pVote = Array.isArray(data.votes[playerKey]) ? data.votes[playerKey] : [];
         let pts = 0;
         let matches = 0;
-        const guessedOptions = [];
+        const breakdown = [];
 
         pVote.forEach((item, idx) => {
-          if (item === leaderRanking[idx]) {
+          const isHit = item === leaderRanking[idx];
+          let slotPts = 0;
+          if (isHit) {
             matches++;
             optionGuessedCounts[idx] += 1;
-            guessedOptions.push({
-              position: idx + 1,
-              option: item
-            });
-            if (idx === 0 || idx === 4) pts += 2;
-            else pts += 1;
+            slotPts = (idx === 0 || idx === 4) ? 2 : 1;
+            pts += slotPts;
           }
+          breakdown.push({
+            position: idx + 1,
+            option: item,
+            isHit: isHit,
+            points: slotPts
+          });
         });
 
-        if (matches === 5) pts += 3;
-        if (matches === 0) pts = -1;
+        let bonusNote = "";
+        if (matches === 5) {
+          pts += 3;
+          bonusNote = "Bonus classifica perfetta: +3 pt";
+        } else if (matches === 0) {
+          pts = -1;
+          bonusNote = "Malus zero risposte indovinate: -1 pt";
+        }
 
         updatedPlayers[playerKey].score += pts;
         roundScores.push({
@@ -983,10 +1314,13 @@
           points: pts,
           runningTotal: updatedPlayers[playerKey].score,
           detail: `${matches}/5 indovinate`,
-          guessedOptions: guessedOptions
+          summaryLabel: `${matches}/5 indovinate`,
+          bonusNote: bonusNote,
+          breakdown: breakdown
         });
       });
 
+      // Bonus Leader: +3 punti se ogni opzione (1..5) è stata indovinata da almeno 1 giocatore
       const allOptionsGuessedByAtLeastOne = leaderRanking.length === 5 && optionGuessedCounts.every(c => c >= 1);
       const leaderBonusPoints = allOptionsGuessedByAtLeastOne ? 3 : 0;
 
@@ -998,16 +1332,25 @@
         || data.currentLeaderName
         || data.currentLeader;
 
+      const leaderBreakdown = leaderRanking.map((opt, idx) => ({
+        position: idx + 1,
+        option: opt,
+        isHit: optionGuessedCounts[idx] > 0,
+        points: 0
+      }));
+
       roundScores.unshift({
         playerKey: data.currentLeader,
         name: leaderDisplayName,
         isLeader: true,
         points: leaderBonusPoints,
         runningTotal: updatedPlayers[data.currentLeader] ? updatedPlayers[data.currentLeader].score : 0,
-        detail: allOptionsGuessedByAtLeastOne
-          ? "Leader • Tutte le 5 opzioni indovinate!"
-          : "Leader • Bonus non sbloccato",
-        guessedOptions: []
+        detail: allOptionsGuessedByAtLeastOne ? "Bonus Leader +3 pt" : "Nessun bonus Leader",
+        summaryLabel: allOptionsGuessedByAtLeastOne ? "Bonus Leader +3 pt" : "0 pt bonus",
+        bonusNote: allOptionsGuessedByAtLeastOne
+          ? "Tutte le 5 opzioni indovinate da almeno un giocatore: +3 pt!"
+          : "Bonus +3 pt non sbloccato (serve almeno 1 indovinato per opzione)",
+        breakdown: leaderBreakdown
       });
 
       const optionStats = leaderRanking.map((opt, idx) => ({
@@ -1018,6 +1361,7 @@
 
       roomRef.update({
         state: 'results',
+        leaderTimerDeadline: null,
         leaderRanking: leaderRanking,
         optionStats: optionStats,
         leaderBonusEarned: allOptionsGuessedByAtLeastOne,
@@ -1031,6 +1375,11 @@
       const roomParam = urlParams.get('room');
       if (roomParam) {
         document.getElementById('room-code-input').value = roomParam.toUpperCase();
+        // Nasconde l'opzione di creazione stanza quando si entra da QR Code con codice stanza
+        document.getElementById('create-room-card').classList.add('hidden');
+        document.getElementById('qr-invite-badge').classList.remove('hidden');
+        document.getElementById('qr-invite-hint').classList.remove('hidden');
+        document.getElementById('show-create-option-wrapper').classList.remove('hidden');
       }
       runFirebaseStartupTest();
     };
