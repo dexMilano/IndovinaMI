@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>IndovinaMI - Il Gioco delle Preferenze</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+
+  <!-- Firebase SDKs (compat per uso diretto su singolo file HTML statico) -->
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+  <style>
+    .drag-item { touch-action: none; cursor: grab; }
+    .drag-item:active { cursor: grabbing; }
+  </style>
+</head>
+<body class="bg-slate-900 text-slate-100 min-h-screen flex flex-col justify-between font-sans">
+
+  <!-- Header -->
+  <header class="bg-slate-800 border-b border-slate-700 py-4 px-6 text-center shadow-md">
+    <h1 class="text-2xl font-bold tracking-wide text-indigo-400">🎯 IndovinaMI</h1>
+    <p class="text-xs text-slate-400 mt-1">Indovina le preferenze del Leader!</p>
+  </header>
+
+  <!-- Content Container -->
+  <main class="max-w-md w-full mx-auto p-4 flex-grow flex flex-col justify-center">
+
+    <!-- SCHERMATA 1: HOME / NICKNAME / CREA O UNISCITI -->
+    <div id="screen-home" class="space-y-6">
+
+      <div class="bg-slate-800 p-5 rounded-2xl border border-slate-700 shadow-xl space-y-3">
+        <label for="player-nickname" class="block text-sm font-medium text-slate-300">Il tuo Nickname</label>
+        <input type="text" id="player-nickname" placeholder="Inserisci il tuo nome..." class="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-indigo-500">
+      </div>
+
+      <!-- Crea Stanza (Host) -->
+      <div class="bg-slate-800 p-5 rounded-2xl border border-slate-700 shadow-xl space-y-4">
+        <h2 class="font-semibold text-lg text-indigo-300">Crea una Stanza (Host)</h2>
+
+        <div>
+          <label for="csv-file-input" class="block text-xs font-medium text-slate-400 mb-1">Carica file domande (CSV opzionale)</label>
+          <input type="file" id="csv-file-input" accept=".csv" class="w-full text-xs text-slate-400 file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-indigo-600 file:text-white hover:file:bg-indigo-700">
+          <p class="text-[11px] text-slate-500 mt-1">Formato: <i>domanda, risp1, risp2, risp3, risp4, risp5</i></p>
+        </div>
+
+        <button onclick="createRoom()" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 rounded-xl shadow-lg transition transform active:scale-95">
+          Crea nuova Stanza
+        </button>
+      </div>
+
+      <!-- Entra in Stanza -->
+      <div class="bg-slate-800 p-5 rounded-2xl border border-slate-700 shadow-xl space-y-3">
+        <h2 class="font-semibold text-lg text-indigo-300">Entra in una Stanza</h2>
+        <input type="text" id="room-code-input" placeholder="Codice Stanza (es. ABCD)" class="w-full uppercase bg-slate-900 border border-slate-700 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-indigo-500">
+        <button onclick="joinRoom()" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 rounded-xl shadow-lg transition transform active:scale-95">
+          Partecipa alla Partita
+        </button>
+      </div>
+
+    </div>
+
+    <!-- SCHERMATA 2: LOBBY -->
+    <div id="screen-lobby" class="hidden space-y-6">
+      <div class="bg-slate-800 p-6 rounded-2xl border border-slate-700 text-center shadow-xl space-y-4">
+        <span class="text-xs uppercase tracking-widest text-slate-400">Codice Stanza</span>
+        <div id="display-room-code" class="text-4xl font-extrabold text-indigo-400 tracking-wider">----</div>
+
+        <div id="qrcode-container" class="flex justify-center my-4 p-2 bg-white rounded-xl w-fit mx-auto"></div>
+
+        <div class="border-t border-slate-700 pt-4">
+          <h3 class="text-sm font-semibold text-slate-300 mb-2">Giocatori Connessi:</h3>
+          <ul id="players-list" class="space-y-1 text-slate-400 text-sm"></ul>
+        </div>
+
+        <div id="host-controls" class="hidden pt-4 border-t border-slate-700">
+          <button onclick="startGame()" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 rounded-xl shadow-lg transition transform active:scale-95">
+            Avvia Partita 🚀
+          </button>
+        </div>
+        <p id="waiting-msg" class="text-xs text-slate-500 italic">In attesa dell'Host per avviare...</p>
+      </div>
+    </div>
+
+    <!-- SCHERMATA 3: GAME -->
+    <div id="screen-game" class="hidden space-y-4">
+
+      <div class="bg-slate-800 p-4 rounded-xl border border-slate-700 text-center">
+        <div class="text-xs text-slate-400">Leader di questo turno:</div>
+        <div id="current-leader-name" class="text-lg font-bold text-amber-400">---</div>
+      </div>
+
+      <div class="bg-indigo-950/60 border border-indigo-500/40 p-4 rounded-xl text-center">
+        <h3 id="current-question-text" class="text-base font-semibold text-indigo-200">Caricamento domanda...</h3>
+      </div>
+
+      <p id="role-instruction" class="text-xs text-center text-slate-400">
+        Ordina le risposte dalla preferita (1°) alla meno preferita (5°):
+      </p>
+
+      <ul id="options-list" class="space-y-2"></ul>
+
+      <button id="submit-vote-btn" onclick="submitRanking()" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 rounded-xl shadow-lg transition transform active:scale-95">
+        Conferma la mia Classifica
+      </button>
+
+      <div id="waiting-others" class="hidden text-center py-4 space-y-2">
+        <div class="inline-block animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-indigo-500"></div>
+        <p class="text-xs text-slate-400">Voto inviato! In attesa degli altri giocatori...</p>
+      </div>
+
+    </div>
+
+    <!-- SCHERMATA 4: RESULTS -->
+    <div id="screen-results" class="hidden space-y-6">
+      <div class="bg-slate-800 p-5 rounded-2xl border border-slate-700 shadow-xl text-center space-y-4">
+        <h2 class="text-xl font-bold text-emerald-400">Risultati Turno</h2>
+
+        <div class="bg-slate-900 p-3 rounded-xl border border-slate-700">
+          <h4 class="text-xs text-slate-400 mb-2">Classifica Reale di <span id="res-leader-name" class="text-amber-400 font-semibold"></span>:</h4>
+          <ol id="actual-ranking-list" class="text-xs text-left space-y-1 list-decimal list-inside text-slate-200"></ol>
+        </div>
+
+        <div class="border-t border-slate-700 pt-3">
+          <h4 class="text-sm font-semibold text-slate-300 mb-2">Punteggi del Turno:</h4>
+          <ul id="round-scores-list" class="space-y-2 text-xs"></ul>
+        </div>
+
+        <div class="border-t border-slate-700 pt-3">
+          <h4 class="text-sm font-semibold text-slate-300 mb-2">Classifica Generale:</h4>
+          <ul id="total-scores-list" class="space-y-1 text-xs"></ul>
+        </div>
+
+        <button id="next-round-btn" onclick="nextRound()" class="hidden w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 rounded-xl shadow-lg transition">
+          Prossimo Turno ➡️
+        </button>
+      </div>
+    </div>
+
+  </main>
+
+  <script>
+    // Configurazione Firebase per IndovinaMI
+    const firebaseConfig = {
+      apiKey: "AIzaSyDOddZmPUJS8UDE71HoMP6Yy3wNz-WP8eI",
+      authDomain: "indovinami-50f89.firebaseapp.com",
+      databaseURL: "https://indovinami-50f89-default-rtdb.europe-west1.firebasedatabase.app",
+      projectId: "indovinami-50f89",
+      storageBucket: "indovinami-50f89.firebasestorage.app",
+      messagingSenderId: "148257553342",
+      appId: "1:148257553342:web:e889913a39bd27b38a17ef"
+    };
+
+    // Inizializza Firebase
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.database();
+
+    // Stato dell'applicazione
+    let roomRef = null;
+    let roomCode = '';
+    let myNickname = '';
+    let isHost = false;
+    let questionsDeck = [];
+    let userVote = [];
+    let currentGameState = null;
+
+    const defaultQuestions = [
+      { domanda: "Gusti di gelato", options: ["Cioccolato", "Fragola", "Pistacchio", "Limone", "Stracciatella"] },
+      { domanda: "Superpoteri da avere", options: ["Volare", "Invisibilità", "Leggere nel pensiero", "Viaggiare nel tempo", "Teletrasporto"] },
+      { domanda: "Genere di film preferito", options: ["Azione / Avventura", "Commedia", "Horror", "Fantascienza / Sci-Fi", "Drammatico"] },
+      { domanda: "Destinazione ideale per una vacanza", options: ["Spiaggia tropicale", "Montagna in inverno", "Città d'arte", "Campeggio nella natura", "Crociera nei Caraibi"] },
+      { domanda: "Condimento top sulla Pizza", options: ["Mozzarella & Pomodoro (Margherita)", "Salame piccante", "Funghi e Prosciutto", "Patatine & Salsiccia", "Ananas (Hawayana)"] },
+      { domanda: "Cosa fare in un weekend di pioggia", options: ["Serie TV / Film sotto le coperte", "Giocare ai videogiochi / Giochi da tavolo", "Leggere un buon libro", "Cucinare o fare dolci", "Dormire tutto il giorno"] },
+      { domanda: "Animale domestico ideale", options: ["Cane", "Gatto", "Pappagallo", "Coniglio", "Pesci rossi"] },
+      { domanda: "Cibo da Fast Food preferito", options: ["Hamburger gourmet", "Patatine fritte", "Nuggets di pollo", "Pizza al taglio", "Kebab completo"] }
+    ];
+
+    function parseCSVLine(line) {
+      const result = [];
+      let current = '';
+      let inQuotes = false;
+
+      for (let i = 0; i < line.length; i++) {
+        const char = line[i];
+        const nextChar = line[i + 1];
+
+        if (char === '"') {
+          if (inQuotes && nextChar === '"') {
+            current += '"';
+            i++;
+          } else {
+            inQuotes = !inQuotes;
+          }
+        } else if ((char === ',' || char === ';') && !inQuotes) {
+          result.push(current.trim());
+          current = '';
+        } else {
+          current += char;
+        }
+      }
+      result.push(current.trim());
+      return result;
+    }
+
+    document.getElementById('csv-file-input').addEventListener('change', function(e) {
+      const file = e.target.files[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = function(evt) {
+        const text = evt.target.result;
+        const lines = text.split(/\r\n|\n/);
+        const parsed = [];
+
+        lines.forEach((line, index) => {
+          if (!line.trim()) return;
+          const cols = parseCSVLine(line);
+          if (index === 0 && cols[0] && cols[0].toLowerCase() === 'domanda') return;
+          if (cols.length >= 6 && cols[0] && cols.slice(1, 6).every(Boolean)) {
+            parsed.push({
+              domanda: cols[0],
+              options: [cols[1], cols[2], cols[3], cols[4], cols[5]]
+            });
+          }
+        });
+
+        if (parsed.length > 0) {
+          questionsDeck = parsed;
+          alert(`Caricate ${parsed.length} domande dal file CSV!`);
+        } else {
+          alert("Formato CSV non valido. Assicurati che ogni riga abbia: domanda, risp1, risp2, risp3, risp4, risp5.");
+        }
+      };
+      reader.readAsText(file, 'UTF-8');
+    });
+
+    function showScreen(id) {
+      ['screen-home', 'screen-lobby', 'screen-game', 'screen-results'].forEach(s => {
+        document.getElementById(s).classList.add('hidden');
+      });
+      document.getElementById(id).classList.remove('hidden');
+    }
+
+    function createRoom() {
+      const name = document.getElementById('player-nickname').value.trim();
+      if (!name) return alert("Inserisci un Nickname!");
+
+      myNickname = name;
+      isHost = true;
+      roomCode = Math.random().toString(36).substring(2, 6).toUpperCase();
+      roomRef = db.ref('rooms/' + roomCode);
+
+      if (questionsDeck.length === 0) questionsDeck = [...defaultQuestions];
+
+      const initialRoomData = {
+        state: 'lobby',
+        host: myNickname,
+        questions: questionsDeck,
+        usedQuestionIndices: [],
+        leaderHistory: [],
+        players: {
