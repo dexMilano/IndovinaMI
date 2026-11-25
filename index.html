@@ -104,10 +104,19 @@
           </span>
         </div>
 
+        <p id="deck-origin-info" class="text-[11px] text-slate-400 bg-slate-900/50 border border-slate-700/60 rounded-lg px-3 py-2">
+          Provenienza domande: in caricamento...
+        </p>
+
         <div class="bg-slate-900/70 border border-slate-700/80 rounded-xl p-3 space-y-2.5">
-          <label for="csv-file-input" class="block text-xs font-medium text-slate-300">
-            Carica file domande CSV (opzionale)
-          </label>
+          <div class="flex items-center justify-between gap-2">
+            <label for="csv-file-input" class="block text-xs font-medium text-slate-300">
+              Carica file domande CSV (opzionale)
+            </label>
+            <button type="button" onclick="downloadTemplateCSV()" class="text-[11px] font-semibold text-indigo-300 hover:text-indigo-200 bg-indigo-950/80 hover:bg-indigo-900/80 border border-indigo-500/40 px-2.5 py-1 rounded-lg transition shrink-0">
+              ⬇️ Scarica CSV modello
+            </button>
+          </div>
           <input type="file" id="csv-file-input" accept=".csv,text/csv" class="w-full text-xs text-slate-400 file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-indigo-600 file:text-white hover:file:bg-indigo-700">
           <p class="text-[11px] text-slate-500">
             Formato: <i>domanda, domanda_giocatori, risp1, risp2, risp3, risp4, risp5</i>
@@ -296,11 +305,38 @@
           <button type="button" id="standings-next-round-btn" onclick="nextRound()" class="hidden w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 rounded-xl shadow-lg transition transform active:scale-95">
             Prossimo Turno ➡️
           </button>
+          <button type="button" id="standings-end-game-btn" onclick="endGameAndCloseRoom()" class="hidden w-full bg-rose-600 hover:bg-rose-700 text-white font-bold py-3 rounded-xl shadow-lg transition transform active:scale-95">
+            🛑 Finisci Partita e Chiudi Stanza
+          </button>
           <p id="standings-waiting-host" class="text-center text-xs text-slate-400 italic hidden">
-            In attesa che l'Host avvii il prossimo turno...
+            In attesa che l'Host avvii il prossimo turno o chiuda la partita...
           </p>
           <button type="button" onclick="backToRoundResults()" class="w-full bg-slate-700 hover:bg-slate-600 text-slate-200 font-semibold py-2.5 rounded-xl text-xs transition">
             ← Torna ai risultati del turno
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- SCHERMATA 6: PARTITA TERMINATA / CLASSIFICA FINALE -->
+    <div id="screen-ended" class="hidden space-y-5">
+      <div class="bg-slate-800 p-5 rounded-2xl border border-slate-700 shadow-xl space-y-5">
+        <div class="text-center space-y-1">
+          <span class="inline-block text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full bg-rose-500/20 text-rose-300 border border-rose-500/40">
+            Stanza Chiusa
+          </span>
+          <h2 class="text-xl font-bold text-amber-400 pt-1">🏁 Classifica Finale</h2>
+          <p id="ended-room-meta" class="text-xs text-slate-400"></p>
+        </div>
+
+        <div id="final-standings-list" class="space-y-2 text-sm"></div>
+
+        <div class="pt-2 space-y-2.5">
+          <button type="button" onclick="downloadFinalStandingsTxt()" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 rounded-xl shadow-lg transition transform active:scale-95">
+            📄 Scarica Classifica Finale (.txt)
+          </button>
+          <button type="button" onclick="returnToHomeScreen()" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 rounded-xl shadow-lg transition transform active:scale-95">
+            🏠 Torna alla Schermata Iniziale
           </button>
         </div>
       </div>
@@ -322,6 +358,7 @@
     firebase.initializeApp(firebaseConfig);
     const db = firebase.database();
     const questionBankRef = db.ref('questionBank');
+    const LOCAL_DECK_META_KEY = 'indovinami_last_deck_meta_v1';
 
     let roomRef = null;
     let roomCode = '';
@@ -330,12 +367,16 @@
     let isHost = false;
     let dbQuestionsDeck = [];
     let dbDeckName = 'Domande Base';
+    let dbSourceFileName = '';
+    let dbSourceType = 'default';
     let csvQuestionsDeck = [];
     let csvDeckName = '';
+    let csvSourceFileName = '';
     let hasLoadedCsv = false;
     let pendingCsvDbDecision = false;
     let userVote = [];
     let currentGameState = null;
+    let lastFinalStandingsSnapshot = null;
     let viewingStandings = false;
     let lastResultsRoundKey = null;
     let timerInterval = null;
@@ -400,6 +441,61 @@
       }
     ];
 
+    function escapeCSVField(value) {
+      const str = String(value ?? '');
+      if (/[",\n\r;]/.test(str)) {
+        return '"' + str.replace(/"/g, '""') + '"';
+      }
+      return str;
+    }
+
+    function downloadTemplateCSV() {
+      const header = ['domanda', 'domanda_giocatori', 'risp1', 'risp2', 'risp3', 'risp4', 'risp5'].join(',');
+      const lines = [header];
+
+      defaultQuestions.forEach(q => {
+        const row = [
+          q.domanda,
+          q.domanda_giocatori,
+          ...(q.options || [])
+        ].map(escapeCSVField).join(',');
+        lines.push(row);
+      });
+
+      const csvContent = '\uFEFF' + lines.join('\r\n');
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', 'modello_domande.csv');
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    }
+
+    function saveLocalDeckMeta(meta) {
+      try {
+        localStorage.setItem(LOCAL_DECK_META_KEY, JSON.stringify({
+          deckName: meta.deckName || 'Domande Base',
+          sourceFileName: meta.sourceFileName || '',
+          sourceType: meta.sourceType || 'default',
+          count: Number(meta.count || 0),
+          savedAt: Date.now()
+        }));
+      } catch (_) {}
+    }
+
+    function readLocalDeckMeta() {
+      try {
+        const raw = localStorage.getItem(LOCAL_DECK_META_KEY);
+        if (!raw) return null;
+        return JSON.parse(raw);
+      } catch (_) {
+        return null;
+      }
+    }
+
     function stripFileExtension(fileName) {
       if (!fileName || typeof fileName !== 'string') return 'Mazzo CSV';
       const cleaned = fileName.trim();
@@ -438,22 +534,45 @@
       return dbDeckName || 'Domande Base';
     }
 
-    function updateDeckBadge(deckName, count) {
+    function updateDeckOriginUI(deckName, count, sourceType, sourceFileName) {
       const badge = document.getElementById('deck-source-badge');
-      if (!badge) return;
-      badge.textContent = `${deckName} • ${count} domande`;
-      badge.title = `${deckName} (${count} domande)`;
+      const originEl = document.getElementById('deck-origin-info');
+
+      if (badge) {
+        badge.textContent = `${deckName} • ${count} domande`;
+        badge.title = `${deckName} (${count} domande)`;
+      }
+
+      if (originEl) {
+        if (sourceType === 'csv') {
+          const fileLabel = sourceFileName || deckName;
+          originEl.textContent = `📄 Provenienza: file CSV "${fileLabel}" (${count} domande)`;
+          originEl.className = "text-[11px] text-emerald-300 bg-emerald-950/30 border border-emerald-500/30 rounded-lg px-3 py-2";
+        } else {
+          originEl.textContent = `☁️ Provenienza: mazzo "${deckName}" salvato su Firebase (${count} domande)`;
+          originEl.className = "text-[11px] text-slate-300 bg-slate-900/60 border border-slate-700/70 rounded-lg px-3 py-2";
+        }
+      }
     }
 
-    function replaceDbQuestions(list, deckTitle) {
+    function replaceDbQuestions(list, deckTitle, sourceType = 'default', sourceFileName = '') {
       const cleanList = normalizeQuestionList(list);
       if (cleanList.length === 0) return Promise.resolve();
       const payload = {
         name: deckTitle || 'Domande Base',
+        sourceType: sourceType,
+        sourceFileName: sourceFileName || '',
         items: cleanList,
         updatedAt: Date.now()
       };
-      return questionBankRef.remove().then(() => questionBankRef.set(payload));
+      return questionBankRef.remove().then(() => questionBankRef.set(payload)).then(() => {
+        saveLocalDeckMeta({
+          deckName: payload.name,
+          sourceFileName: payload.sourceFileName,
+          sourceType: payload.sourceType,
+          count: cleanList.length
+        });
+      });
     }
 
     function confirmReplaceDbWithCsv(shouldSaveToDb) {
@@ -469,58 +588,88 @@
         statusEl.textContent = `⏳ Aggiornamento DB con "${csvDeckName}" (${count} domande)...`;
         statusEl.classList.remove('hidden');
 
-        replaceDbQuestions(csvQuestionsDeck, csvDeckName)
+        replaceDbQuestions(csvQuestionsDeck, csvDeckName, 'csv', csvSourceFileName || csvDeckName)
           .then(() => {
             dbQuestionsDeck = [...csvQuestionsDeck];
             dbDeckName = csvDeckName;
-            updateDeckBadge(csvDeckName, count);
-            statusEl.textContent = `✅ Mazzo "${csvDeckName}" (${count} domande) caricato e salvato nel DB.`;
+            dbSourceType = 'csv';
+            dbSourceFileName = csvSourceFileName || csvDeckName;
+            updateDeckOriginUI(csvDeckName, count, 'csv', dbSourceFileName);
+            statusEl.textContent = `✅ File "${dbSourceFileName}" (${count} domande) salvato nel DB.`;
             statusEl.classList.remove('hidden');
           })
           .catch((err) => {
-            updateDeckBadge(csvDeckName, count);
-            statusEl.textContent = `⚠️ Mazzo "${csvDeckName}" (${count} domande) attivo, ma errore salvataggio DB: ${err.message}`;
+            updateDeckOriginUI(csvDeckName, count, 'csv', csvSourceFileName || csvDeckName);
+            statusEl.textContent = `⚠️ File "${csvDeckName}" (${count} domande) attivo, ma errore salvataggio DB: ${err.message}`;
             statusEl.classList.remove('hidden');
           });
       } else {
-        updateDeckBadge(csvDeckName, count);
-        statusEl.textContent = `✅ Mazzo "${csvDeckName}" (${count} domande) attivo per questa partita.`;
+        updateDeckOriginUI(csvDeckName, count, 'csv', csvSourceFileName || csvDeckName);
+        statusEl.textContent = `✅ File "${csvDeckName}" (${count} domande) attivo per questa partita.`;
         statusEl.classList.remove('hidden');
       }
     }
 
     function loadQuestionBankFromFirebase() {
+      const localMeta = readLocalDeckMeta();
       dbQuestionsDeck = [...defaultQuestions];
-      dbDeckName = 'Domande Base';
-      updateDeckBadge(dbDeckName, dbQuestionsDeck.length);
+      dbDeckName = (localMeta && localMeta.deckName) || 'Domande Base';
+      dbSourceType = (localMeta && localMeta.sourceType) || 'default';
+      dbSourceFileName = (localMeta && localMeta.sourceFileName) || '';
+      updateDeckOriginUI(dbDeckName, dbQuestionsDeck.length, dbSourceType, dbSourceFileName);
 
       return questionBankRef.once('value')
         .then((snap) => {
           const val = snap.val();
           let dbQuestions = [];
-          let savedName = 'Domande DB';
+          let savedName = 'Domande Base';
+          let savedType = 'default';
+          let savedFile = '';
 
           if (Array.isArray(val)) {
             dbQuestions = normalizeQuestionList(val);
+            if (localMeta && localMeta.sourceType === 'csv') {
+              savedName = localMeta.deckName || savedName;
+              savedType = 'csv';
+              savedFile = localMeta.sourceFileName || savedName;
+            }
           } else if (val && typeof val === 'object') {
             dbQuestions = normalizeQuestionList(val.items);
             if (typeof val.name === 'string' && val.name.trim()) {
               savedName = val.name.trim();
+            }
+            if (typeof val.sourceType === 'string' && val.sourceType.trim()) {
+              savedType = val.sourceType.trim();
+            }
+            if (typeof val.sourceFileName === 'string' && val.sourceFileName.trim()) {
+              savedFile = val.sourceFileName.trim();
+            } else if (savedType === 'csv') {
+              savedFile = savedName;
             }
           }
 
           if (dbQuestions.length > 0) {
             dbQuestionsDeck = dbQuestions;
             dbDeckName = savedName;
+            dbSourceType = savedType;
+            dbSourceFileName = savedFile;
+            saveLocalDeckMeta({
+              deckName: dbDeckName,
+              sourceFileName: dbSourceFileName,
+              sourceType: dbSourceType,
+              count: dbQuestionsDeck.length
+            });
             if (!hasLoadedCsv) {
-              updateDeckBadge(dbDeckName, dbQuestionsDeck.length);
+              updateDeckOriginUI(dbDeckName, dbQuestionsDeck.length, dbSourceType, dbSourceFileName);
             }
           } else {
-            return replaceDbQuestions(defaultQuestions, 'Domande Base').then(() => {
+            return replaceDbQuestions(defaultQuestions, 'Domande Base', 'default', '').then(() => {
               dbQuestionsDeck = [...defaultQuestions];
               dbDeckName = 'Domande Base';
+              dbSourceType = 'default';
+              dbSourceFileName = '';
               if (!hasLoadedCsv) {
-                updateDeckBadge(dbDeckName, dbQuestionsDeck.length);
+                updateDeckOriginUI(dbDeckName, dbQuestionsDeck.length, dbSourceType, dbSourceFileName);
               }
             });
           }
@@ -528,9 +677,8 @@
         .catch((err) => {
           console.warn('[IndovinaMI] Impossibile leggere /questionBank, uso domande predefinite:', err);
           dbQuestionsDeck = [...defaultQuestions];
-          dbDeckName = 'Domande Base';
           if (!hasLoadedCsv) {
-            updateDeckBadge(dbDeckName, dbQuestionsDeck.length);
+            updateDeckOriginUI(dbDeckName, dbQuestionsDeck.length, dbSourceType, dbSourceFileName);
           }
         });
     }
@@ -577,7 +725,7 @@
         .catch((err) => {
           const reason = err && err.message ? err.message : 'Errore sconosciuto';
           setFirebaseStatus('error', `Firebase errore: ${reason}`);
-          updateDeckBadge('Domande Base', defaultQuestions.length);
+          updateDeckOriginUI('Domande Base', defaultQuestions.length, 'default', '');
         });
 
       setTimeout(() => {
@@ -661,16 +809,24 @@
           if (normalized.length > 0) {
             csvQuestionsDeck = normalized;
             csvDeckName = baseDeckName;
+            csvSourceFileName = baseDeckName;
             hasLoadedCsv = true;
             pendingCsvDbDecision = true;
-            updateDeckBadge(baseDeckName, normalized.length);
-            statusEl.textContent = `✅ Mazzo "${baseDeckName}" • ${normalized.length} domande caricate.`;
+            saveLocalDeckMeta({
+              deckName: baseDeckName,
+              sourceFileName: baseDeckName,
+              sourceType: 'csv',
+              count: normalized.length
+            });
+            updateDeckOriginUI(baseDeckName, normalized.length, 'csv', baseDeckName);
+            statusEl.textContent = `✅ File CSV "${baseDeckName}" • ${normalized.length} domande caricate.`;
             statusEl.classList.remove('hidden');
             promptEl.classList.remove('hidden');
           } else {
             hasLoadedCsv = false;
             csvQuestionsDeck = [];
             csvDeckName = '';
+            csvSourceFileName = '';
             pendingCsvDbDecision = false;
             promptEl.classList.add('hidden');
             statusEl.classList.add('hidden');
@@ -706,10 +862,38 @@
     }
 
     function showScreen(id) {
-      ['screen-home', 'screen-lobby', 'screen-game', 'screen-results', 'screen-standings'].forEach(s => {
+      ['screen-home', 'screen-lobby', 'screen-game', 'screen-results', 'screen-standings', 'screen-ended'].forEach(s => {
         document.getElementById(s).classList.add('hidden');
       });
       document.getElementById(id).classList.remove('hidden');
+    }
+
+    function detachRoomListener() {
+      if (roomRef) {
+        try { roomRef.off(); } catch (_) {}
+      }
+    }
+
+    function returnToHomeScreen() {
+      clearRoundTimer();
+      detachRoomListener();
+      roomRef = null;
+      roomCode = '';
+      isHost = false;
+      userVote = [];
+      currentGameState = null;
+      viewingStandings = false;
+      lastResultsRoundKey = null;
+      autoSubmitTriggeredForRound = null;
+
+      document.getElementById('create-room-card').classList.remove('hidden');
+      document.getElementById('show-create-option-wrapper').classList.add('hidden');
+      document.getElementById('qr-invite-badge').classList.add('hidden');
+      document.getElementById('qr-invite-hint').classList.add('hidden');
+      document.getElementById('room-code-input').value = '';
+
+      showScreen('screen-home');
+      loadQuestionBankFromFirebase();
     }
 
     async function createRoom() {
@@ -1024,11 +1208,129 @@
 
       if (isHost) {
         document.getElementById('standings-next-round-btn').classList.remove('hidden');
+        document.getElementById('standings-end-game-btn').classList.remove('hidden');
         document.getElementById('standings-waiting-host').classList.add('hidden');
       } else {
         document.getElementById('standings-next-round-btn').classList.add('hidden');
+        document.getElementById('standings-end-game-btn').classList.add('hidden');
         document.getElementById('standings-waiting-host').classList.remove('hidden');
       }
+    }
+
+    function renderEndedScreen(snapshotMeta) {
+      const meta = snapshotMeta || lastFinalStandingsSnapshot || {
+        roomCode: roomCode || '----',
+        deckName: getActiveDeckName(),
+        roundsPlayed: Number((currentGameState && currentGameState.roundNumber) || 0),
+        sortedStandings: getSortedStandings((currentGameState && currentGameState.players) || {})
+      };
+
+      lastFinalStandingsSnapshot = meta;
+
+      document.getElementById('ended-room-meta').textContent =
+        `Stanza ${meta.roomCode} • Mazzo: ${meta.deckName} • Turni giocati: ${meta.roundsPlayed}`;
+
+      const listEl = document.getElementById('final-standings-list');
+      const standings = Array.isArray(meta.sortedStandings) ? meta.sortedStandings : [];
+
+      if (standings.length === 0) {
+        listEl.innerHTML = `<p class="text-center text-slate-400 text-xs">Nessun punteggio registrato.</p>`;
+      } else {
+        listEl.innerHTML = standings.map(p => {
+          const medal = p.rank === 1 ? '🥇' : (p.rank === 2 ? '🥈' : (p.rank === 3 ? '🥉' : `${p.rank}°`));
+          const rowStyle = p.isMe
+            ? 'bg-cyan-950/55 border-cyan-400 ring-2 ring-cyan-400/80 text-white'
+            : 'bg-slate-900/80 border-slate-700 text-slate-200';
+          return `
+            <div class="flex items-center justify-between gap-2 px-3.5 py-2.5 rounded-xl border ${rowStyle}">
+              <div class="flex items-center gap-2.5 min-w-0">
+                <span class="text-sm font-extrabold shrink-0">${medal}</span>
+                <span class="font-bold truncate">${p.name}</span>
+                ${p.isMe ? `<span class="text-[10px] font-extrabold uppercase tracking-wider px-2 py-0.5 rounded-full bg-cyan-400 text-slate-950 shrink-0">Tu</span>` : ''}
+              </div>
+              <span class="font-extrabold text-indigo-300 shrink-0">${p.score} pt</span>
+            </div>
+          `;
+        }).join('');
+      }
+
+      showScreen('screen-ended');
+    }
+
+    function downloadFinalStandingsTxt() {
+      const meta = lastFinalStandingsSnapshot || {
+        roomCode: roomCode || '----',
+        deckName: getActiveDeckName(),
+        roundsPlayed: Number((currentGameState && currentGameState.roundNumber) || 0),
+        sortedStandings: getSortedStandings((currentGameState && currentGameState.players) || {})
+      };
+
+      const now = new Date();
+      const lines = [
+        "==========================================",
+        "        🎯 INDOVINAMI - CLASSIFICA FINALE",
+        "==========================================",
+        `Data e ora: ${now.toLocaleString('it-IT')}`,
+        `Codice Stanza: ${meta.roomCode}`,
+        `Mazzo domande: ${meta.deckName}`,
+        `Turni completati: ${meta.roundsPlayed}`,
+        "------------------------------------------",
+        ""
+      ];
+
+      (meta.sortedStandings || []).forEach(p => {
+        const prefix = p.rank === 1 ? "1° [ORO]" : (p.rank === 2 ? "2° [ARGENTO]" : (p.rank === 3 ? "3° [BRONZO]" : `${p.rank}°`));
+        lines.push(`${prefix} - ${p.name}: ${p.score} punti`);
+      });
+
+      lines.push("", "==========================================");
+
+      const txtContent = lines.join("\r\n");
+      const blob = new Blob([txtContent], { type: 'text/plain;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const safeCode = (meta.roomCode || 'STANZA').replace(/[^A-Za-z0-9_-]/g, '');
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `classifica_finale_${safeCode}.txt`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    }
+
+    function endGameAndCloseRoom() {
+      if (!isHost || !roomRef) return;
+      const confirmed = confirm(
+        "Vuoi terminare la partita e chiudere la stanza per tutti i giocatori? Potrai scaricare la classifica finale in formato testo."
+      );
+      if (!confirmed) return;
+
+      const playersObj = (currentGameState && currentGameState.players) || {};
+      const sortedStandings = getSortedStandings(playersObj);
+      const snapshotMeta = {
+        roomCode: roomCode,
+        deckName: (currentGameState && currentGameState.deckName) || getActiveDeckName(),
+        roundsPlayed: Number((currentGameState && currentGameState.roundNumber) || 0),
+        sortedStandings: sortedStandings
+      };
+
+      lastFinalStandingsSnapshot = snapshotMeta;
+
+      roomRef.update({
+        state: 'ended',
+        endedAt: Date.now(),
+        finalStandings: sortedStandings
+      }).then(() => {
+        renderEndedScreen(snapshotMeta);
+        // Rimuove il nodo stanza dopo breve istante così il database resta pulito
+        setTimeout(() => {
+          if (roomRef) {
+            roomRef.remove().catch(() => {});
+          }
+        }, 4000);
+      }).catch(err => {
+        alert("Errore durante la chiusura della stanza: " + err.message);
+      });
     }
 
     function openStandingsScreen() {
@@ -1158,13 +1460,33 @@
     }
 
     function listenToRoom() {
-      roomRef.off();
+      detachRoomListener();
       roomRef.on('value', snapshot => {
         const data = snapshot.val();
-        if (!data) return;
+        if (!data) {
+          if (currentGameState && currentGameState.state === 'ended') {
+            renderEndedScreen(lastFinalStandingsSnapshot);
+          }
+          return;
+        }
         currentGameState = data;
 
         const playersObj = data.players || {};
+
+        if (data.state === 'ended') {
+          clearRoundTimer();
+          const sorted = Array.isArray(data.finalStandings) && data.finalStandings.length > 0
+            ? data.finalStandings.map(p => ({ ...p, isMe: p.key === myPlayerKey }))
+            : getSortedStandings(playersObj);
+
+          renderEndedScreen({
+            roomCode: roomCode,
+            deckName: data.deckName || getActiveDeckName(),
+            roundsPlayed: Number(data.roundNumber || 0),
+            sortedStandings: sorted
+          });
+          return;
+        }
 
         if (data.state === 'lobby') {
           clearRoundTimer();
