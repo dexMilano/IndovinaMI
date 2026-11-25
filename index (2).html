@@ -1,0 +1,1733 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>IndovinaMI - Chi mi conosce meglio di tutti?</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+
+  <!-- Firebase SDKs (compat per uso diretto su singolo file HTML statico) -->
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+  <style>
+    .drag-row {
+      touch-action: none;
+      user-select: none;
+      -webkit-user-select: none;
+      transition: transform 0.14s cubic-bezier(0.2, 0.8, 0.2, 1), box-shadow 0.14s ease, border-color 0.14s ease, opacity 0.14s ease;
+    }
+    .drag-row.dragging {
+      position: relative;
+      z-index: 40;
+      border-color: #818cf8;
+      background-color: #1e293b;
+      box-shadow: 0 18px 32px -8px rgba(15, 23, 42, 0.85), 0 0 0 1px rgba(129, 140, 248, 0.5);
+      transform: scale(1.03) rotate(1.2deg);
+    }
+    .trello-drop-slot {
+      border: 2px dashed rgba(129, 140, 248, 0.65);
+      background: rgba(99, 102, 241, 0.12);
+      border-radius: 0.75rem;
+      min-height: 58px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      color: #a5b4fc;
+      transition: all 0.12s ease;
+    }
+    .drag-anchor {
+      touch-action: none;
+      cursor: grab;
+    }
+    .drag-anchor:active {
+      cursor: grabbing;
+    }
+  </style>
+</head>
+<body class="bg-slate-900 text-slate-100 min-h-screen flex flex-col justify-between font-sans">
+
+  <!-- Header -->
+  <header class="bg-slate-800 border-b border-slate-700 py-4 px-6 text-center shadow-md">
+    <h1 class="text-2xl font-bold tracking-wide text-indigo-400">🎯 IndovinaMI</h1>
+    <p class="text-xs text-slate-300 mt-1 font-medium">Chi mi conosce meglio di tutti?</p>
+    <div id="firebase-status-badge" class="mt-2 inline-flex items-center gap-2 text-[11px] px-3 py-1 rounded-full bg-slate-900 border border-slate-700 text-amber-300">
+      <span id="firebase-status-dot" class="w-2 h-2 rounded-full bg-amber-400 animate-pulse"></span>
+      <span id="firebase-status-text">Test connessione Firebase in corso...</span>
+    </div>
+  </header>
+
+  <!-- Content Container -->
+  <main class="max-w-md w-full mx-auto p-4 flex-grow flex flex-col justify-center">
+
+    <!-- SCHERMATA 1: HOME / NICKNAME / CREA O UNISCITI -->
+    <div id="screen-home" class="space-y-5">
+
+      <div class="bg-slate-800 p-5 rounded-2xl border border-slate-700 shadow-xl space-y-3">
+        <label for="player-nickname" class="block text-sm font-medium text-slate-300">Il tuo Nickname</label>
+        <input type="text" id="player-nickname" placeholder="Inserisci il tuo nome..." class="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-indigo-500">
+      </div>
+
+      <!-- Entra in Stanza -->
+      <div id="join-room-card" class="bg-slate-800 p-5 rounded-2xl border border-slate-700 shadow-xl space-y-3">
+        <div class="flex items-center justify-between gap-2">
+          <h2 class="font-semibold text-lg text-emerald-300">Entra in una Stanza</h2>
+          <span id="qr-invite-badge" class="hidden text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">
+            Invito QR
+          </span>
+        </div>
+        <p id="qr-invite-hint" class="hidden text-xs text-slate-400">
+          Sei arrivato tramite codice stanza. Inserisci il tuo Nickname e premi Partecipa!
+        </p>
+        <input type="text" id="room-code-input" placeholder="Codice Stanza (es. ABCD)" class="w-full uppercase bg-slate-900 border border-slate-700 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-emerald-500">
+        <button type="button" id="join-room-btn" onclick="joinRoom()" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 rounded-xl shadow-lg transition transform active:scale-95">
+          Partecipa alla Partita
+        </button>
+
+        <div id="show-create-option-wrapper" class="hidden pt-2 border-t border-slate-700/70 text-center">
+          <button type="button" onclick="revealCreateRoomCard()" class="text-xs text-indigo-300 hover:text-indigo-200 underline">
+            Vuoi invece creare una nuova stanza come Host?
+          </button>
+        </div>
+      </div>
+
+      <!-- Crea Stanza (Host) -->
+      <div id="create-room-card" class="bg-slate-800 p-5 rounded-2xl border border-slate-700 shadow-xl space-y-4">
+        <div class="flex items-center justify-between gap-2">
+          <h2 class="font-semibold text-lg text-indigo-300">Crea una Stanza (Host)</h2>
+          <span id="deck-source-badge" class="text-[10px] font-semibold px-2.5 py-1 rounded-full bg-slate-900 text-slate-300 border border-slate-700 truncate max-w-[190px]">
+            Mazzo in caricamento...
+          </span>
+        </div>
+
+        <p id="deck-origin-info" class="text-[11px] text-slate-400 bg-slate-900/50 border border-slate-700/60 rounded-lg px-3 py-2">
+          Provenienza domande: in caricamento...
+        </p>
+
+        <div class="bg-slate-900/70 border border-slate-700/80 rounded-xl p-3 space-y-2.5">
+          <div class="flex items-center justify-between gap-2">
+            <label for="csv-file-input" class="block text-xs font-medium text-slate-300">
+              Carica file domande CSV (opzionale)
+            </label>
+            <button type="button" onclick="downloadTemplateCSV()" class="text-[11px] font-semibold text-indigo-300 hover:text-indigo-200 bg-indigo-950/80 hover:bg-indigo-900/80 border border-indigo-500/40 px-2.5 py-1 rounded-lg transition shrink-0">
+              ⬇️ Scarica CSV modello
+            </button>
+          </div>
+          <input type="file" id="csv-file-input" accept=".csv,text/csv" class="w-full text-xs text-slate-400 file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-indigo-600 file:text-white hover:file:bg-indigo-700">
+          <p class="text-[11px] text-slate-500">
+            Formato: <i>domanda, domanda_giocatori, risp1, risp2, risp3, risp4, risp5</i>
+          </p>
+          <p id="csv-status" class="text-xs text-emerald-400 hidden"></p>
+
+          <!-- Richiesta esplicita se sostituire le domande nel DB dopo il caricamento del CSV -->
+          <div id="csv-db-prompt" class="hidden bg-amber-950/50 border border-amber-400/50 rounded-xl p-3 space-y-2.5">
+            <p class="text-xs font-semibold text-amber-200 leading-snug">
+              Vuoi caricare queste domande anche nel DB, svuotandolo da quelle già presenti?
+            </p>
+            <div class="flex gap-2">
+              <button type="button" onclick="confirmReplaceDbWithCsv(true)" class="flex-1 bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold py-2 px-3 rounded-lg text-xs transition">
+                Sì, svuota e salva nel DB
+              </button>
+              <button type="button" onclick="confirmReplaceDbWithCsv(false)" class="flex-1 bg-slate-700 hover:bg-slate-600 text-slate-200 font-semibold py-2 px-3 rounded-lg text-xs transition">
+                No, usa solo CSV qui
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Regola opzionale: Bonus Bersaglio -->
+        <div class="bg-slate-900/70 border border-slate-700/80 rounded-xl p-3">
+          <label class="flex items-start gap-2.5 text-xs text-slate-200 cursor-pointer">
+            <input type="checkbox" id="target-bonus-enabled-input" class="mt-0.5 rounded border-slate-600 bg-slate-800 text-amber-400 focus:ring-amber-400">
+            <span>
+              <strong class="text-amber-300">Bonus Bersaglio opzionale (+3 pt)</strong>: assegna +3 punti al bersaglio se ogni sua opzione viene indovinata da almeno un giocatore.
+            </span>
+          </label>
+        </div>
+
+        <button type="button" id="create-room-btn" onclick="createRoom()" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 rounded-xl shadow-lg transition transform active:scale-95">
+          Crea nuova Stanza
+        </button>
+      </div>
+
+    </div>
+
+    <!-- SCHERMATA 2: LOBBY -->
+    <div id="screen-lobby" class="hidden space-y-6">
+      <div class="bg-slate-800 p-6 rounded-2xl border border-slate-700 text-center shadow-xl space-y-4">
+        <span class="text-xs uppercase tracking-widest text-slate-400">Codice Stanza</span>
+        <div id="display-room-code" class="text-4xl font-extrabold text-indigo-400 tracking-wider">----</div>
+        <div id="lobby-target-bonus-info" class="inline-block text-[11px] px-3 py-1 rounded-full bg-slate-900 border border-slate-700 text-slate-300"></div>
+
+        <div id="qrcode-container" class="flex justify-center my-4 p-2 bg-white rounded-xl w-fit mx-auto"></div>
+
+        <div class="border-t border-slate-700 pt-4">
+          <h3 class="text-sm font-semibold text-slate-300 mb-2">Giocatori Connessi:</h3>
+          <ul id="players-list" class="space-y-1 text-slate-400 text-sm"></ul>
+        </div>
+
+        <div id="host-controls" class="hidden pt-4 border-t border-slate-700">
+          <button type="button" onclick="startGame()" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 rounded-xl shadow-lg transition transform active:scale-95">
+            Avvia Partita 🚀
+          </button>
+        </div>
+        <p id="waiting-msg" class="text-xs text-slate-500 italic">In attesa dell'Host per avviare...</p>
+      </div>
+    </div>
+
+    <!-- SCHERMATA 3: GAME -->
+    <div id="screen-game" class="hidden space-y-4">
+
+      <div class="bg-slate-800 p-3.5 rounded-xl border border-slate-700 space-y-2.5">
+        <div class="flex items-center justify-between gap-2">
+          <span id="question-counter-badge" class="text-[11px] font-extrabold uppercase tracking-wider px-2.5 py-1 rounded-full bg-indigo-500/20 text-indigo-300 border border-indigo-400/40">
+            Domanda 1 / 1
+          </span>
+          <span id="target-submission-badge" class="text-[11px] font-semibold px-2.5 py-1 rounded-full bg-slate-900 text-slate-300 border border-slate-700">
+            Bersaglio in attesa...
+          </span>
+        </div>
+
+        <div class="text-center pt-0.5">
+          <div class="text-[11px] text-slate-400">Bersaglio di questo turno:</div>
+          <div id="current-target-name" class="text-lg font-bold text-amber-400">---</div>
+        </div>
+
+        <div class="bg-slate-900/90 border border-slate-700/80 rounded-lg px-3 py-2 flex items-center justify-between text-xs">
+          <span class="text-slate-300 font-medium" id="submissions-count-text">Risposte inviate: 0 / 0</span>
+          <span class="text-slate-400" id="submissions-remaining-text">Restano: 0</span>
+        </div>
+      </div>
+
+      <div id="target-timer-banner" class="hidden bg-amber-950/60 border border-amber-400/60 rounded-xl p-3 text-center space-y-1">
+        <div class="text-[11px] uppercase tracking-wider font-bold text-amber-300">
+          ⏱️ Il Bersaglio ha inviato! Tempo rimasto:
+        </div>
+        <div id="target-countdown-display" class="text-2xl font-mono font-extrabold text-amber-400">01:00</div>
+        <p id="target-timer-subtext" class="text-[11px] text-amber-200/80">
+          Allo scadere del minuto le risposte mancanti verranno inviate in automatico.
+        </p>
+      </div>
+
+      <div class="bg-indigo-950/60 border border-indigo-500/40 p-4 rounded-xl text-center">
+        <h3 id="current-question-text" class="text-base font-semibold text-indigo-200">Caricamento domanda...</h3>
+      </div>
+
+      <p id="role-instruction" class="text-xs text-center text-slate-400">
+        Afferra l'ancora ⋮⋮ per trascinare le opzioni in stile Trello da 1 (preferita) a 5 (meno preferita):
+      </p>
+
+      <ul id="options-list" class="space-y-2"></ul>
+
+      <button type="button" id="submit-vote-btn" onclick="submitRanking()" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 rounded-xl shadow-lg transition transform active:scale-95">
+        Conferma Classifica (1 → 5)
+      </button>
+
+      <div id="waiting-others" class="hidden text-center py-4 space-y-2 bg-slate-800/70 rounded-xl border border-slate-700 px-3">
+        <div class="inline-block animate-spin rounded-full h-7 w-7 border-t-2 border-b-2 border-indigo-500"></div>
+        <p class="text-xs font-medium text-emerald-300">Risposta inviata!</p>
+        <p id="waiting-status-detail" class="text-[11px] text-slate-400">In attesa degli altri giocatori...</p>
+      </div>
+
+    </div>
+
+    <!-- SCHERMATA 4: RISULTATI DEL TURNO -->
+    <div id="screen-results" class="hidden space-y-5">
+      <div class="bg-slate-800 p-5 rounded-2xl border border-slate-700 shadow-xl text-center space-y-4">
+        <div class="flex items-center justify-between gap-2">
+          <span id="results-question-counter" class="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300 border border-indigo-400/30">
+            Domanda 1 / 1
+          </span>
+          <h2 class="text-xl font-bold text-emerald-400">Risultati del Turno</h2>
+          <span class="w-16"></span>
+        </div>
+
+        <!-- VISTA RISULTATI PER IL BERSAGLIO -->
+        <div id="target-results-view" class="hidden space-y-4 text-left">
+          <div class="bg-amber-950/40 border border-amber-400/40 p-3.5 rounded-xl space-y-1">
+            <div class="flex items-center justify-between gap-2">
+              <span class="text-[11px] uppercase tracking-wider text-amber-300 font-bold">Esito Bersaglio del Turno</span>
+              <span id="target-bonus-status-pill" class="text-[11px] px-2.5 py-0.5 rounded-full font-bold"></span>
+            </div>
+            <p id="target-bonus-explanation" class="text-xs text-amber-100/90 mt-1"></p>
+          </div>
+
+          <div class="bg-slate-900 p-3.5 rounded-xl border border-slate-700 space-y-2">
+            <h4 class="text-xs font-semibold text-slate-300">
+              Le tue risposte (1 → 5) e quanti giocatori le hanno indovinate:
+            </h4>
+            <ol id="target-answers-stats-list" class="space-y-1.5 text-xs text-slate-200"></ol>
+          </div>
+        </div>
+
+        <!-- VISTA RISULTATI PER I GIOCATORI (NON BERSAGLIO) -->
+        <div id="player-results-view" class="hidden space-y-4 text-left">
+          <div class="bg-indigo-950/50 border border-indigo-500/40 p-3.5 rounded-xl">
+            <div class="text-[11px] uppercase tracking-wider text-indigo-300 font-semibold">Il tuo punteggio totale in questo turno</div>
+            <div id="player-turn-total-score" class="text-2xl font-extrabold mt-0.5 text-emerald-400">0 pt</div>
+            <p id="player-turn-calculation-message" class="text-xs text-slate-200 mt-1.5 leading-relaxed"></p>
+          </div>
+
+          <div class="bg-slate-900 p-3.5 rounded-xl border border-slate-700 space-y-2">
+            <h4 class="text-xs font-semibold text-slate-300">
+              Scelte del Bersaglio <span id="player-view-target-name" class="text-amber-400 font-bold"></span> e tuo esito:
+            </h4>
+            <ol id="player-target-picks-list" class="space-y-1.5 text-xs text-slate-200"></ol>
+          </div>
+        </div>
+
+        <button type="button" onclick="openStandingsScreen()" class="w-full bg-amber-500 hover:bg-amber-600 text-slate-950 font-extrabold py-3 rounded-xl shadow-lg transition transform active:scale-95">
+          Vai alla Classifica Generale 🏆
+        </button>
+      </div>
+    </div>
+
+    <!-- SCHERMATA 5: CLASSIFICA GENERALE -->
+    <div id="screen-standings" class="hidden space-y-5">
+      <div class="bg-slate-800 p-5 rounded-2xl border border-slate-700 shadow-xl space-y-5">
+        <div class="text-center">
+          <h2 class="text-xl font-bold text-amber-400">🏆 Classifica Generale</h2>
+          <p class="text-xs text-slate-400 mt-1">Ordine decrescente dal punteggio più alto</p>
+        </div>
+
+        <div id="podium-container" class="pt-2"></div>
+
+        <div id="other-standings-section" class="border-t border-slate-700 pt-4 space-y-2 hidden">
+          <h3 class="text-xs uppercase tracking-wider text-slate-400 font-semibold">Altri giocatori</h3>
+          <ul id="other-standings-list" class="space-y-2 text-sm"></ul>
+        </div>
+
+        <div class="pt-2 space-y-2.5">
+          <button type="button" id="standings-next-round-btn" onclick="nextRound()" class="hidden w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 rounded-xl shadow-lg transition transform active:scale-95">
+            Prossimo Turno ➡️
+          </button>
+          <p id="standings-waiting-host" class="text-center text-xs text-slate-400 italic hidden">
+            In attesa che l'Host avvii il prossimo turno...
+          </p>
+          <button type="button" onclick="backToRoundResults()" class="w-full bg-slate-700 hover:bg-slate-600 text-slate-200 font-semibold py-2.5 rounded-xl text-xs transition">
+            ← Torna ai risultati del turno
+          </button>
+        </div>
+      </div>
+    </div>
+
+  </main>
+
+  <script>
+    const firebaseConfig = {
+      apiKey: "AIzaSyDOddZmPUJS8UDE71HoMP6Yy3wNz-WP8eI",
+      authDomain: "indovinami-50f89.firebaseapp.com",
+      databaseURL: "https://indovinami-50f89-default-rtdb.europe-west1.firebasedatabase.app",
+      projectId: "indovinami-50f89",
+      storageBucket: "indovinami-50f89.firebasestorage.app",
+      messagingSenderId: "148257553342",
+      appId: "1:148257553342:web:e889913a39bd27b38a17ef"
+    };
+
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.database();
+    const questionBankRef = db.ref('questionBank');
+    const LOCAL_DECK_META_KEY = 'indovinami_last_deck_meta_v1';
+
+    let roomRef = null;
+    let roomCode = '';
+    let myNickname = '';
+    let myPlayerKey = '';
+    let isHost = false;
+    let dbQuestionsDeck = [];
+    let dbDeckName = 'Domande Base';
+    let dbSourceFileName = '';
+    let dbSourceType = 'default';
+    let csvQuestionsDeck = [];
+    let csvDeckName = '';
+    let csvSourceFileName = '';
+    let hasLoadedCsv = false;
+    let pendingCsvDbDecision = false;
+    let userVote = [];
+    let currentGameState = null;
+    let viewingStandings = false;
+    let lastResultsRoundKey = null;
+    let timerInterval = null;
+    let autoSubmitTriggeredForRound = null;
+
+    let dragState = {
+      active: false,
+      pointerId: null,
+      sourceIndex: null,
+      currentIndex: null,
+      placeholderIndex: null
+    };
+
+    const positionLabels = [
+      "1 • Più preferita",
+      "2 • Seconda",
+      "3 • Media",
+      "4 • Quarta",
+      "5 • Meno preferita"
+    ];
+
+    const defaultQuestions = [
+      {
+        domanda: "Quali sono i tuoi gusti di gelato preferiti?",
+        domanda_giocatori: "Quali sono i gusti di gelato preferiti di {bersaglio}?",
+        options: ["Cioccolato", "Fragola", "Pistacchio", "Limone", "Stracciatella"]
+      },
+      {
+        domanda: "Quali superpoteri vorresti avere?",
+        domanda_giocatori: "Quali superpoteri vorrebbe avere {bersaglio}?",
+        options: ["Volare", "Invisibilità", "Leggere nel pensiero", "Viaggiare nel tempo", "Teletrasporto"]
+      },
+      {
+        domanda: "Qual è il tuo genere di film preferito?",
+        domanda_giocatori: "Qual è il genere di film preferito di {bersaglio}?",
+        options: ["Azione / Avventura", "Commedia", "Horror", "Fantascienza / Sci-Fi", "Drammatico"]
+      },
+      {
+        domanda: "Dove vorresti passare la tua vacanza ideale?",
+        domanda_giocatori: "Dove {bersaglio} vorrebbe passare la sua vacanza ideale?",
+        options: ["Spiaggia tropicale", "Montagna in inverno", "Città d'arte", "Campeggio nella natura", "Crociera nei Caraibi"]
+      },
+      {
+        domanda: "Qual è il tuo condimento top sulla Pizza?",
+        domanda_giocatori: "Qual è il condimento top sulla Pizza per {bersaglio}?",
+        options: ["Mozzarella & Pomodoro (Margherita)", "Salame piccante", "Funghi e Prosciutto", "Patatine & Salsiccia", "Ananas (Hawayana)"]
+      },
+      {
+        domanda: "Cosa preferisci fare in un weekend di pioggia?",
+        domanda_giocatori: "Cosa preferisce fare {bersaglio} in un weekend di pioggia?",
+        options: ["Serie TV / Film sotto le coperte", "Giocare ai videogiochi / Giochi da tavolo", "Leggere un buon libro", "Cucinare o fare dolci", "Dormire tutto il giorno"]
+      },
+      {
+        domanda: "Qual è il tuo animale domestico ideale?",
+        domanda_giocatori: "Qual è l'animale domestico ideale per {bersaglio}?",
+        options: ["Cane", "Gatto", "Pappagallo", "Coniglio", "Pesci rossi"]
+      },
+      {
+        domanda: "Qual è il tuo cibo da Fast Food preferito?",
+        domanda_giocatori: "Qual è il cibo da Fast Food preferito di {bersaglio}?",
+        options: ["Hamburger gourmet", "Patatine fritte", "Nuggets di pollo", "Pizza al taglio", "Kebab completo"]
+      }
+    ];
+
+    function escapeCSVField(value) {
+      const str = String(value ?? '');
+      if (/[",\n\r;]/.test(str)) {
+        return '"' + str.replace(/"/g, '""') + '"';
+      }
+      return str;
+    }
+
+    function downloadTemplateCSV() {
+      const header = ['domanda', 'domanda_giocatori', 'risp1', 'risp2', 'risp3', 'risp4', 'risp5'].join(',');
+      const lines = [header];
+
+      defaultQuestions.forEach(q => {
+        const row = [
+          q.domanda,
+          q.domanda_giocatori,
+          ...(q.options || [])
+        ].map(escapeCSVField).join(',');
+        lines.push(row);
+      });
+
+      const csvContent = '\uFEFF' + lines.join('\r\n');
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', 'modello_domande.csv');
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    }
+
+    function saveLocalDeckMeta(meta) {
+      try {
+        localStorage.setItem(LOCAL_DECK_META_KEY, JSON.stringify({
+          deckName: meta.deckName || 'Domande Base',
+          sourceFileName: meta.sourceFileName || '',
+          sourceType: meta.sourceType || 'default',
+          count: Number(meta.count || 0),
+          savedAt: Date.now()
+        }));
+      } catch (_) {}
+    }
+
+    function readLocalDeckMeta() {
+      try {
+        const raw = localStorage.getItem(LOCAL_DECK_META_KEY);
+        if (!raw) return null;
+        return JSON.parse(raw);
+      } catch (_) {
+        return null;
+      }
+    }
+
+    function stripFileExtension(fileName) {
+      if (!fileName || typeof fileName !== 'string') return 'Mazzo CSV';
+      const cleaned = fileName.trim();
+      const lastDot = cleaned.lastIndexOf('.');
+      if (lastDot <= 0) return cleaned;
+      return cleaned.substring(0, lastDot);
+    }
+
+    function normalizeQuestionList(rawList) {
+      if (!Array.isArray(rawList)) return [];
+      return rawList
+        .filter(q => q && typeof q.domanda === 'string' && q.domanda.trim() && Array.isArray(q.options) && q.options.length === 5 && q.options.every(Boolean))
+        .map(q => ({
+          domanda: q.domanda.trim(),
+          domanda_giocatori: (typeof q.domanda_giocatori === 'string' && q.domanda_giocatori.trim())
+            ? q.domanda_giocatori.trim()
+            : q.domanda.trim(),
+          options: q.options.map(o => String(o).trim())
+        }));
+    }
+
+    function getActiveDeck() {
+      if (hasLoadedCsv && csvQuestionsDeck.length > 0) {
+        return csvQuestionsDeck;
+      }
+      if (dbQuestionsDeck.length > 0) {
+        return dbQuestionsDeck;
+      }
+      return [...defaultQuestions];
+    }
+
+    function getActiveDeckName() {
+      if (hasLoadedCsv && csvQuestionsDeck.length > 0 && csvDeckName) {
+        return csvDeckName;
+      }
+      return dbDeckName || 'Domande Base';
+    }
+
+    function updateDeckOriginUI(deckName, count, sourceType, sourceFileName) {
+      const badge = document.getElementById('deck-source-badge');
+      const originEl = document.getElementById('deck-origin-info');
+
+      if (badge) {
+        badge.textContent = `${deckName} • ${count} domande`;
+        badge.title = `${deckName} (${count} domande)`;
+      }
+
+      if (originEl) {
+        if (sourceType === 'csv') {
+          const fileLabel = sourceFileName || deckName;
+          originEl.textContent = `📄 Provenienza: file CSV "${fileLabel}" (${count} domande)`;
+          originEl.className = "text-[11px] text-emerald-300 bg-emerald-950/30 border border-emerald-500/30 rounded-lg px-3 py-2";
+        } else {
+          originEl.textContent = `☁️ Provenienza: mazzo "${deckName}" salvato su Firebase (${count} domande)`;
+          originEl.className = "text-[11px] text-slate-300 bg-slate-900/60 border border-slate-700/70 rounded-lg px-3 py-2";
+        }
+      }
+    }
+
+    function replaceDbQuestions(list, deckTitle, sourceType = 'default', sourceFileName = '') {
+      const cleanList = normalizeQuestionList(list);
+      if (cleanList.length === 0) return Promise.resolve();
+      const payload = {
+        name: deckTitle || 'Domande Base',
+        sourceType: sourceType,
+        sourceFileName: sourceFileName || '',
+        items: cleanList,
+        updatedAt: Date.now()
+      };
+      return questionBankRef.remove().then(() => questionBankRef.set(payload)).then(() => {
+        saveLocalDeckMeta({
+          deckName: payload.name,
+          sourceFileName: payload.sourceFileName,
+          sourceType: payload.sourceType,
+          count: cleanList.length
+        });
+      });
+    }
+
+    function confirmReplaceDbWithCsv(shouldSaveToDb) {
+      const promptEl = document.getElementById('csv-db-prompt');
+      const statusEl = document.getElementById('csv-status');
+      pendingCsvDbDecision = false;
+      promptEl.classList.add('hidden');
+
+      if (!hasLoadedCsv || csvQuestionsDeck.length === 0) return;
+
+      const count = csvQuestionsDeck.length;
+      if (shouldSaveToDb) {
+        statusEl.textContent = `⏳ Aggiornamento DB con "${csvDeckName}" (${count} domande)...`;
+        statusEl.classList.remove('hidden');
+
+        replaceDbQuestions(csvQuestionsDeck, csvDeckName, 'csv', csvSourceFileName || csvDeckName)
+          .then(() => {
+            dbQuestionsDeck = [...csvQuestionsDeck];
+            dbDeckName = csvDeckName;
+            dbSourceType = 'csv';
+            dbSourceFileName = csvSourceFileName || csvDeckName;
+            updateDeckOriginUI(csvDeckName, count, 'csv', dbSourceFileName);
+            statusEl.textContent = `✅ File "${dbSourceFileName}" (${count} domande) salvato nel DB.`;
+            statusEl.classList.remove('hidden');
+          })
+          .catch((err) => {
+            updateDeckOriginUI(csvDeckName, count, 'csv', csvSourceFileName || csvDeckName);
+            statusEl.textContent = `⚠️ File "${csvDeckName}" (${count} domande) attivo, ma errore salvataggio DB: ${err.message}`;
+            statusEl.classList.remove('hidden');
+          });
+      } else {
+        updateDeckOriginUI(csvDeckName, count, 'csv', csvSourceFileName || csvDeckName);
+        statusEl.textContent = `✅ File "${csvDeckName}" (${count} domande) attivo per questa partita.`;
+        statusEl.classList.remove('hidden');
+      }
+    }
+
+    function loadQuestionBankFromFirebase() {
+      const localMeta = readLocalDeckMeta();
+      dbQuestionsDeck = [...defaultQuestions];
+      dbDeckName = (localMeta && localMeta.deckName) || 'Domande Base';
+      dbSourceType = (localMeta && localMeta.sourceType) || 'default';
+      dbSourceFileName = (localMeta && localMeta.sourceFileName) || '';
+      updateDeckOriginUI(dbDeckName, dbQuestionsDeck.length, dbSourceType, dbSourceFileName);
+
+      return questionBankRef.once('value')
+        .then((snap) => {
+          const val = snap.val();
+          let dbQuestions = [];
+          let savedName = 'Domande Base';
+          let savedType = 'default';
+          let savedFile = '';
+
+          if (Array.isArray(val)) {
+            dbQuestions = normalizeQuestionList(val);
+            if (localMeta && localMeta.sourceType === 'csv') {
+              savedName = localMeta.deckName || savedName;
+              savedType = 'csv';
+              savedFile = localMeta.sourceFileName || savedName;
+            }
+          } else if (val && typeof val === 'object') {
+            dbQuestions = normalizeQuestionList(val.items);
+            if (typeof val.name === 'string' && val.name.trim()) {
+              savedName = val.name.trim();
+            }
+            if (typeof val.sourceType === 'string' && val.sourceType.trim()) {
+              savedType = val.sourceType.trim();
+            }
+            if (typeof val.sourceFileName === 'string' && val.sourceFileName.trim()) {
+              savedFile = val.sourceFileName.trim();
+            } else if (savedType === 'csv') {
+              savedFile = savedName;
+            }
+          }
+
+          if (dbQuestions.length > 0) {
+            dbQuestionsDeck = dbQuestions;
+            dbDeckName = savedName;
+            dbSourceType = savedType;
+            dbSourceFileName = savedFile;
+            saveLocalDeckMeta({
+              deckName: dbDeckName,
+              sourceFileName: dbSourceFileName,
+              sourceType: dbSourceType,
+              count: dbQuestionsDeck.length
+            });
+            if (!hasLoadedCsv) {
+              updateDeckOriginUI(dbDeckName, dbQuestionsDeck.length, dbSourceType, dbSourceFileName);
+            }
+          } else {
+            return replaceDbQuestions(defaultQuestions, 'Domande Base', 'default', '').then(() => {
+              dbQuestionsDeck = [...defaultQuestions];
+              dbDeckName = 'Domande Base';
+              dbSourceType = 'default';
+              dbSourceFileName = '';
+              if (!hasLoadedCsv) {
+                updateDeckOriginUI(dbDeckName, dbQuestionsDeck.length, dbSourceType, dbSourceFileName);
+              }
+            });
+          }
+        })
+        .catch((err) => {
+          console.warn('[IndovinaMI] Impossibile leggere /questionBank, uso domande predefinite:', err);
+          dbQuestionsDeck = [...defaultQuestions];
+          if (!hasLoadedCsv) {
+            updateDeckOriginUI(dbDeckName, dbQuestionsDeck.length, dbSourceType, dbSourceFileName);
+          }
+        });
+    }
+
+    function setFirebaseStatus(state, message) {
+      const badge = document.getElementById('firebase-status-badge');
+      const dot = document.getElementById('firebase-status-dot');
+      const text = document.getElementById('firebase-status-text');
+
+      badge.className = 'mt-2 inline-flex items-center gap-2 text-[11px] px-3 py-1 rounded-full bg-slate-900 border ';
+      dot.className = 'w-2 h-2 rounded-full ';
+
+      if (state === 'ok') {
+        badge.className += 'border-emerald-500/40 text-emerald-300';
+        dot.className += 'bg-emerald-400';
+      } else if (state === 'error') {
+        badge.className += 'border-rose-500/40 text-rose-300';
+        dot.className += 'bg-rose-400';
+      } else {
+        badge.className += 'border-amber-500/40 text-amber-300';
+        dot.className += 'bg-amber-400 animate-pulse';
+      }
+
+      text.textContent = message;
+    }
+
+    function runFirebaseStartupTest() {
+      setFirebaseStatus('loading', 'Test connessione Firebase in corso...');
+
+      let connectedSeen = false;
+      const connectedRef = db.ref('.info/connected');
+
+      connectedRef.on('value', (snap) => {
+        if (snap.val() === true) {
+          connectedSeen = true;
+        }
+      });
+
+      db.ref('rooms').limitToFirst(1).once('value')
+        .then(() => {
+          setFirebaseStatus('ok', 'Firebase connesso e leggibile');
+          return loadQuestionBankFromFirebase();
+        })
+        .catch((err) => {
+          const reason = err && err.message ? err.message : 'Errore sconosciuto';
+          setFirebaseStatus('error', `Firebase errore: ${reason}`);
+          updateDeckOriginUI('Domande Base', defaultQuestions.length, 'default', '');
+        });
+
+      setTimeout(() => {
+        if (!connectedSeen && document.getElementById('firebase-status-text').textContent.includes('in corso')) {
+          setFirebaseStatus('error', 'Firebase non raggiungibile (controlla URL DB o rete)');
+        }
+      }, 6000);
+    }
+
+    function sanitizeFirebaseKey(name) {
+      return name.replace(/[.$#\[\]\/]/g, '_').trim();
+    }
+
+    function parseCSVLine(line) {
+      const result = [];
+      let current = '';
+      let inQuotes = false;
+
+      for (let i = 0; i < line.length; i++) {
+        const char = line[i];
+        const nextChar = line[i + 1];
+
+        if (char === '"') {
+          if (inQuotes && nextChar === '"') {
+            current += '"';
+            i++;
+          } else {
+            inQuotes = !inQuotes;
+          }
+        } else if ((char === ',' || char === ';') && !inQuotes) {
+          result.push(current.trim());
+          current = '';
+        } else {
+          current += char;
+        }
+      }
+      result.push(current.trim());
+      return result;
+    }
+
+    document.getElementById('csv-file-input').addEventListener('change', function(e) {
+      const file = e.target.files && e.target.files[0];
+      const statusEl = document.getElementById('csv-status');
+      const promptEl = document.getElementById('csv-db-prompt');
+      if (!file) return;
+
+      const baseDeckName = stripFileExtension(file.name);
+
+      const reader = new FileReader();
+      reader.onload = function(evt) {
+        try {
+          const text = evt.target.result || '';
+          const lines = text.split(/\r\n|\n|\r/);
+          const parsed = [];
+
+          lines.forEach((line, index) => {
+            if (!line.trim()) return;
+            const cols = parseCSVLine(line);
+            const firstColLower = (cols[0] || '').replace(/^\uFEFF/, '').toLowerCase();
+            if (index === 0 && (firstColLower === 'domanda' || firstColLower === 'domanda_bersaglio' || firstColLower === 'domanda_leader')) return;
+
+            if (cols.length >= 7 && cols[0] && cols.slice(2, 7).every(Boolean)) {
+              const targetQ = cols[0].replace(/^\uFEFF/, '');
+              const playersQ = cols[1] ? cols[1].trim() : targetQ;
+              parsed.push({
+                domanda: targetQ,
+                domanda_giocatori: playersQ,
+                options: [cols[2], cols[3], cols[4], cols[5], cols[6]]
+              });
+            } else if (cols.length >= 6 && cols[0] && cols.slice(1, 6).every(Boolean)) {
+              const targetQ = cols[0].replace(/^\uFEFF/, '');
+              parsed.push({
+                domanda: targetQ,
+                domanda_giocatori: targetQ,
+                options: [cols[1], cols[2], cols[3], cols[4], cols[5]]
+              });
+            }
+          });
+
+          const normalized = normalizeQuestionList(parsed);
+          if (normalized.length > 0) {
+            csvQuestionsDeck = normalized;
+            csvDeckName = baseDeckName;
+            csvSourceFileName = baseDeckName;
+            hasLoadedCsv = true;
+            pendingCsvDbDecision = true;
+            saveLocalDeckMeta({
+              deckName: baseDeckName,
+              sourceFileName: baseDeckName,
+              sourceType: 'csv',
+              count: normalized.length
+            });
+            updateDeckOriginUI(baseDeckName, normalized.length, 'csv', baseDeckName);
+            statusEl.textContent = `✅ File CSV "${baseDeckName}" • ${normalized.length} domande caricate.`;
+            statusEl.classList.remove('hidden');
+            promptEl.classList.remove('hidden');
+          } else {
+            hasLoadedCsv = false;
+            csvQuestionsDeck = [];
+            csvDeckName = '';
+            csvSourceFileName = '';
+            pendingCsvDbDecision = false;
+            promptEl.classList.add('hidden');
+            statusEl.classList.add('hidden');
+            alert("Formato CSV non valido. Usa: domanda, domanda_giocatori, risp1, risp2, risp3, risp4, risp5.");
+          }
+        } catch (err) {
+          alert("Errore nella lettura del file CSV: " + err.message);
+        }
+      };
+      reader.onerror = function() {
+        alert("Impossibile leggere il file selezionato.");
+      };
+      reader.readAsText(file, 'UTF-8');
+    });
+
+    function formatQuestionForViewer(questionObj, targetName, isViewerTarget) {
+      if (!questionObj) return "";
+      const safeTarget = targetName || "il Bersaglio";
+      if (isViewerTarget) {
+        return questionObj.domanda || "";
+      }
+      const rawPlayersQ = questionObj.domanda_giocatori || questionObj.domanda || "";
+      return rawPlayersQ
+        .replace(/<bersaglio>/gi, safeTarget)
+        .replace(/\{bersaglio\}/gi, safeTarget)
+        .replace(/<leader>/gi, safeTarget)
+        .replace(/\{leader\}/gi, safeTarget);
+    }
+
+    function revealCreateRoomCard() {
+      document.getElementById('create-room-card').classList.remove('hidden');
+      document.getElementById('show-create-option-wrapper').classList.add('hidden');
+    }
+
+    function showScreen(id) {
+      ['screen-home', 'screen-lobby', 'screen-game', 'screen-results', 'screen-standings'].forEach(s => {
+        document.getElementById(s).classList.add('hidden');
+      });
+      document.getElementById(id).classList.remove('hidden');
+    }
+
+    async function createRoom() {
+      const rawName = document.getElementById('player-nickname').value.trim();
+      if (!rawName) return alert("Inserisci un Nickname!");
+
+      const safeKey = sanitizeFirebaseKey(rawName);
+      if (!safeKey) return alert("Inserisci un Nickname valido!");
+
+      if (hasLoadedCsv && pendingCsvDbDecision) {
+        const saveToDb = confirm(
+          `Hai caricato "${csvDeckName}" (${csvQuestionsDeck.length} domande): vuoi caricarlo anche nel DB, svuotandolo da quelle già presenti?`
+        );
+        confirmReplaceDbWithCsv(saveToDb);
+      }
+
+      myNickname = rawName;
+      myPlayerKey = safeKey;
+      isHost = true;
+      roomCode = Math.random().toString(36).substring(2, 6).toUpperCase();
+      roomRef = db.ref('rooms/' + roomCode);
+
+      const deckToUse = getActiveDeck();
+      const activeDeckTitle = getActiveDeckName();
+      const targetBonusEnabled = Boolean(document.getElementById('target-bonus-enabled-input').checked);
+
+      const btn = document.getElementById('create-room-btn');
+      btn.disabled = true;
+      btn.textContent = "Creazione stanza...";
+
+      const initialRoomData = {
+        state: 'lobby',
+        host: myNickname,
+        deckName: activeDeckTitle,
+        targetBonusEnabled: targetBonusEnabled,
+        roundNumber: 0,
+        questions: deckToUse,
+        usedQuestionIndices: [],
+        targetHistory: [],
+        targetTimerDeadline: null,
+        players: {
+          [myPlayerKey]: { name: myNickname, score: 0 }
+        }
+      };
+
+      roomRef.set(initialRoomData).then(() => {
+        btn.disabled = false;
+        btn.textContent = "Crea nuova Stanza";
+        listenToRoom();
+        setupLobbyUI();
+      }).catch(err => {
+        btn.disabled = false;
+        btn.textContent = "Crea nuova Stanza";
+        alert("Errore nella creazione della stanza su Firebase: " + err.message);
+      });
+    }
+
+    function joinRoom() {
+      const rawName = document.getElementById('player-nickname').value.trim();
+      const code = document.getElementById('room-code-input').value.trim().toUpperCase();
+      if (!rawName) return alert("Inserisci un Nickname!");
+      if (!code) return alert("Inserisci il Codice Stanza!");
+
+      const safeKey = sanitizeFirebaseKey(rawName);
+      if (!safeKey) return alert("Inserisci un Nickname valido!");
+
+      myNickname = rawName;
+      myPlayerKey = safeKey;
+      isHost = false;
+      roomCode = code;
+      roomRef = db.ref('rooms/' + roomCode);
+
+      const btn = document.getElementById('join-room-btn');
+      btn.disabled = true;
+      btn.textContent = "Connessione...";
+
+      roomRef.once('value').then(snapshot => {
+        if (!snapshot.exists()) {
+          btn.disabled = false;
+          btn.textContent = "Partecipa alla Partita";
+          alert("Stanza non trovata!");
+          return;
+        }
+        roomRef.child('players/' + myPlayerKey).set({ name: myNickname, score: 0 }).then(() => {
+          btn.disabled = false;
+          btn.textContent = "Partecipa alla Partita";
+          listenToRoom();
+          setupLobbyUI();
+        });
+      }).catch(err => {
+        btn.disabled = false;
+        btn.textContent = "Partecipa alla Partita";
+        alert("Errore di connessione a Firebase: " + err.message);
+      });
+    }
+
+    function setupLobbyUI() {
+      document.getElementById('display-room-code').innerText = roomCode;
+      const bonusInfo = document.getElementById('lobby-target-bonus-info');
+      const bonusEnabled = Boolean(currentGameState && currentGameState.targetBonusEnabled);
+      bonusInfo.textContent = bonusEnabled
+        ? "⭐ Bonus Bersaglio (+3 pt): ATTIVO"
+        : "Bonus Bersaglio: DISATTIVO";
+      bonusInfo.className = bonusEnabled
+        ? "inline-block text-[11px] px-3 py-1 rounded-full bg-amber-500/20 border border-amber-400/40 text-amber-300 font-semibold"
+        : "inline-block text-[11px] px-3 py-1 rounded-full bg-slate-900 border border-slate-700 text-slate-400";
+
+      if (isHost) {
+        document.getElementById('host-controls').classList.remove('hidden');
+        document.getElementById('waiting-msg').classList.add('hidden');
+      } else {
+        document.getElementById('host-controls').classList.add('hidden');
+        document.getElementById('waiting-msg').classList.remove('hidden');
+      }
+
+      document.getElementById('qrcode-container').innerHTML = '';
+      new QRCode(document.getElementById('qrcode-container'), {
+        text: window.location.href.split('?')[0] + '?room=' + roomCode,
+        width: 128,
+        height: 128
+      });
+
+      showScreen('screen-lobby');
+    }
+
+    function clearRoundTimer() {
+      if (timerInterval) {
+        clearInterval(timerInterval);
+        timerInterval = null;
+      }
+      document.getElementById('target-timer-banner').classList.add('hidden');
+    }
+
+    function formatSecondsMMSS(totalSeconds) {
+      const clamped = Math.max(0, Math.ceil(totalSeconds));
+      const mins = Math.floor(clamped / 60);
+      const secs = clamped % 60;
+      return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+    }
+
+    function syncTargetTimerUI(data) {
+      const votesObj = data.votes || {};
+      const targetKey = data.currentTarget;
+      const hasVoted = Object.prototype.hasOwnProperty.call(votesObj, myPlayerKey);
+      const deadline = data.targetTimerDeadline;
+
+      if (data.state !== 'playing' || !deadline || hasVoted) {
+        if (timerInterval) {
+          clearInterval(timerInterval);
+          timerInterval = null;
+        }
+        document.getElementById('target-timer-banner').classList.add('hidden');
+        return;
+      }
+
+      const banner = document.getElementById('target-timer-banner');
+      const display = document.getElementById('target-countdown-display');
+      banner.classList.remove('hidden');
+
+      const updateTick = () => {
+        const remainingSec = (deadline - Date.now()) / 1000;
+        display.textContent = formatSecondsMMSS(remainingSec);
+
+        if (remainingSec <= 0) {
+          clearInterval(timerInterval);
+          timerInterval = null;
+          display.textContent = "00:00";
+
+          const roundId = `${data.roundNumber || 0}_${targetKey || ''}`;
+          if (!hasVoted && autoSubmitTriggeredForRound !== roundId) {
+            autoSubmitTriggeredForRound = roundId;
+            const fallbackVote = (Array.isArray(userVote) && userVote.length === 5)
+              ? userVote
+              : [...(data.currentQuestion.options || [])];
+            roomRef.child('votes/' + myPlayerKey).set(fallbackVote);
+          }
+        }
+      };
+
+      if (timerInterval) clearInterval(timerInterval);
+      updateTick();
+      timerInterval = setInterval(updateTick, 250);
+    }
+
+    function updateSubmissionsStatusUI(data) {
+      const playersObj = data.players || {};
+      const totalPlayers = Object.keys(playersObj).length;
+      const votesObj = data.votes || {};
+      const submittedCount = Object.keys(votesObj).length;
+      const remainingCount = Math.max(0, totalPlayers - submittedCount);
+
+      const targetKey = data.currentTarget;
+      const targetName = data.currentTargetName || targetKey || 'Bersaglio';
+      const targetVoted = Boolean(targetKey && Object.prototype.hasOwnProperty.call(votesObj, targetKey));
+
+      document.getElementById('submissions-count-text').textContent =
+        `Risposte inviate: ${submittedCount} / ${totalPlayers}`;
+      document.getElementById('submissions-remaining-text').textContent =
+        `Restano: ${remainingCount}`;
+
+      const targetBadge = document.getElementById('target-submission-badge');
+      if (targetVoted) {
+        targetBadge.textContent = `✅ Bersaglio ${targetName} ha inviato`;
+        targetBadge.className = "text-[11px] font-semibold px-2.5 py-1 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/40";
+      } else {
+        targetBadge.textContent = `⏳ Bersaglio ${targetName} non ha inviato`;
+        targetBadge.className = "text-[11px] font-semibold px-2.5 py-1 rounded-full bg-slate-900 text-amber-300 border border-slate-700";
+      }
+
+      document.getElementById('waiting-status-detail').textContent =
+        `Inviate ${submittedCount} su ${totalPlayers} (restano ${remainingCount})${targetVoted ? ` • ${targetName} ha già inviato` : ''}.`;
+    }
+
+    function getSortedStandings(playersObj) {
+      const entries = Object.entries(playersObj || {}).map(([key, p]) => ({
+        key: key,
+        name: (p && p.name) ? p.name : key,
+        score: Number((p && p.score) || 0)
+      }));
+
+      entries.sort((a, b) => {
+        if (b.score !== a.score) return b.score - a.score;
+        return a.name.localeCompare(b.name, 'it');
+      });
+
+      let currentRank = 1;
+      return entries.map((item, idx) => {
+        if (idx > 0 && item.score < entries[idx - 1].score) {
+          currentRank = idx + 1;
+        }
+        return {
+          ...item,
+          rank: currentRank,
+          isMe: item.key === myPlayerKey
+        };
+      });
+    }
+
+    function renderStandingsUI(playersObj) {
+      const sorted = getSortedStandings(playersObj);
+      const topThree = sorted.slice(0, 3);
+      const others = sorted.slice(3);
+
+      const podiumContainer = document.getElementById('podium-container');
+
+      const renderPodiumCard = (player, place) => {
+        if (!player) {
+          return `<div class="flex-1 rounded-xl border border-dashed border-slate-700/70 bg-slate-900/30 p-2.5 text-center text-[11px] text-slate-600 flex flex-col justify-center min-h-[108px]">—</div>`;
+        }
+
+        const medalMap = {
+          1: { medal: '🥇', ring: 'border-amber-400/70 bg-amber-500/10', height: 'min-h-[138px]', badge: 'bg-amber-400 text-slate-950' },
+          2: { medal: '🥈', ring: 'border-slate-300/60 bg-slate-700/30', height: 'min-h-[118px]', badge: 'bg-slate-300 text-slate-950' },
+          3: { medal: '🥉', ring: 'border-orange-400/60 bg-orange-500/10', height: 'min-h-[106px]', badge: 'bg-orange-400 text-slate-950' }
+        };
+        const style = medalMap[place];
+        const meHighlight = player.isMe
+          ? 'ring-2 ring-cyan-400 border-cyan-400 bg-cyan-950/50 shadow-lg shadow-cyan-500/20'
+          : style.ring;
+
+        return `
+          <div class="flex-1 rounded-xl border p-2.5 text-center flex flex-col justify-between transition ${style.height} ${meHighlight}">
+            <div class="flex items-center justify-center gap-1">
+              <span class="text-base">${style.medal}</span>
+              <span class="text-[10px] font-extrabold px-1.5 py-0.5 rounded-full ${style.badge}">${player.rank}°</span>
+            </div>
+            <div class="my-1.5">
+              <div class="text-xs font-bold text-white break-words leading-tight">${player.name}</div>
+              ${player.isMe ? `<span class="inline-block mt-1 text-[10px] font-extrabold uppercase tracking-wider px-2 py-0.5 rounded-full bg-cyan-400 text-slate-950">Tu</span>` : ''}
+            </div>
+            <div class="text-sm font-extrabold text-indigo-300">${player.score} pt</div>
+          </div>
+        `;
+      };
+
+      const secondPlace = topThree.find(p => p.rank === 2) || topThree[1] || null;
+      const firstPlace = topThree.find(p => p.rank === 1) || topThree[0] || null;
+      const thirdPlace = topThree.find(p => p.rank === 3) || topThree[2] || null;
+
+      podiumContainer.innerHTML = `
+        <div class="flex items-end justify-center gap-2">
+          ${renderPodiumCard(secondPlace, 2)}
+          ${renderPodiumCard(firstPlace, 1)}
+          ${renderPodiumCard(thirdPlace, 3)}
+        </div>
+      `;
+
+      const othersSection = document.getElementById('other-standings-section');
+      const othersList = document.getElementById('other-standings-list');
+
+      if (others.length > 0) {
+        othersSection.classList.remove('hidden');
+        othersList.innerHTML = others.map(p => {
+          const rowStyle = p.isMe
+            ? 'bg-cyan-950/55 border-cyan-400 ring-2 ring-cyan-400/80 text-white'
+            : 'bg-slate-900/80 border-slate-700 text-slate-200';
+          return `
+            <li class="flex items-center justify-between gap-2 px-3 py-2.5 rounded-xl border ${rowStyle}">
+              <div class="flex items-center gap-2.5 min-w-0">
+                <span class="inline-flex items-center justify-center w-6 h-6 rounded-full bg-slate-800 border border-slate-600 text-xs font-bold text-indigo-300 shrink-0">${p.rank}</span>
+                <span class="font-semibold truncate">${p.name}</span>
+                ${p.isMe ? `<span class="text-[10px] font-extrabold uppercase tracking-wider px-2 py-0.5 rounded-full bg-cyan-400 text-slate-950 shrink-0">Tu</span>` : ''}
+              </div>
+              <span class="font-extrabold text-indigo-300 shrink-0">${p.score} pt</span>
+            </li>
+          `;
+        }).join('');
+      } else {
+        othersSection.classList.add('hidden');
+        othersList.innerHTML = '';
+      }
+
+      if (isHost) {
+        document.getElementById('standings-next-round-btn').classList.remove('hidden');
+        document.getElementById('standings-waiting-host').classList.add('hidden');
+      } else {
+        document.getElementById('standings-next-round-btn').classList.add('hidden');
+        document.getElementById('standings-waiting-host').classList.remove('hidden');
+      }
+    }
+
+    function openStandingsScreen() {
+      viewingStandings = true;
+      if (currentGameState && currentGameState.players) {
+        renderStandingsUI(currentGameState.players);
+      }
+      showScreen('screen-standings');
+    }
+
+    function backToRoundResults() {
+      viewingStandings = false;
+      showScreen('screen-results');
+    }
+
+    function renderTurnResultsForViewer(data) {
+      const playersObj = data.players || {};
+      const totalQ = Array.isArray(data.questions) && data.questions.length > 0 ? data.questions.length : defaultQuestions.length;
+      const currentQNum = Number(data.roundNumber || 1);
+      document.getElementById('results-question-counter').textContent = `Domanda ${currentQNum} / ${totalQ}`;
+
+      const targetKey = data.currentTarget;
+      const targetName = data.currentTargetName || targetKey || 'Bersaglio';
+      const isViewerTarget = myPlayerKey === targetKey;
+
+      const targetView = document.getElementById('target-results-view');
+      const playerView = document.getElementById('player-results-view');
+
+      const optionStats = Array.isArray(data.optionStats) ? data.optionStats : [];
+      const targetRanking = Array.isArray(data.targetRanking) ? data.targetRanking : [];
+      const targetBonusEnabled = Boolean(data.targetBonusEnabled);
+      const targetBonusEarned = Boolean(data.targetBonusEarned);
+
+      if (isViewerTarget) {
+        targetView.classList.remove('hidden');
+        playerView.classList.add('hidden');
+
+        const pill = document.getElementById('target-bonus-status-pill');
+        const explanation = document.getElementById('target-bonus-explanation');
+
+        if (!targetBonusEnabled) {
+          pill.textContent = "Bonus non attivo";
+          pill.className = "text-[11px] px-2.5 py-0.5 rounded-full font-bold bg-slate-800 text-slate-400 border border-slate-700";
+          explanation.textContent = "Il bonus bersaglio non era attivo per questa partita (0 pt bonus).";
+        } else if (targetBonusEarned) {
+          pill.textContent = "⭐ Bonus PRESO (+3 pt)";
+          pill.className = "text-[11px] px-2.5 py-0.5 rounded-full font-bold bg-amber-500/20 text-amber-300 border border-amber-400/50";
+          explanation.textContent = "Hai preso il bonus (+3 pt): ogni tua opzione è stata indovinata da almeno un giocatore!";
+        } else {
+          pill.textContent = "Bonus NON preso (0 pt)";
+          pill.className = "text-[11px] px-2.5 py-0.5 rounded-full font-bold bg-slate-800 text-slate-300 border border-slate-600";
+          explanation.textContent = "Non hai preso il bonus: per ottenere +3 pt serve che tutte e 5 le tue opzioni vengano indovinate da almeno un giocatore.";
+        }
+
+        const statsRows = optionStats.length > 0
+          ? optionStats
+          : targetRanking.map((opt, idx) => ({ position: idx + 1, option: opt, guessedCount: 0 }));
+
+        document.getElementById('target-answers-stats-list').innerHTML = statsRows.map((st, idx) => {
+          const count = Number(st.guessedCount || 0);
+          const label = count === 1 ? "1 giocatore ha indovinato" : `${count} giocatori hanno indovinato`;
+          return `
+            <li class="flex items-center justify-between gap-2 bg-slate-800/80 border border-slate-700/80 px-3 py-2 rounded-lg">
+              <div class="flex items-center gap-2 min-w-0">
+                <span class="inline-flex items-center justify-center w-5 h-5 rounded-full bg-amber-500/20 text-amber-300 font-bold text-[11px] shrink-0">${st.position || (idx + 1)}</span>
+                <span class="truncate text-slate-100 font-medium">${st.option}</span>
+              </div>
+              <span class="text-[11px] font-bold shrink-0 px-2 py-0.5 rounded ${count > 0 ? 'bg-emerald-500/20 text-emerald-300' : 'bg-slate-700 text-slate-400'}">
+                ${label}
+              </span>
+            </li>
+          `;
+        }).join('');
+      } else {
+        targetView.classList.add('hidden');
+        playerView.classList.remove('hidden');
+
+        document.getElementById('player-view-target-name').textContent = targetName;
+
+        const roundScores = Array.isArray(data.roundScores) ? data.roundScores : [];
+        const myEntry = roundScores.find(s => s.playerKey === myPlayerKey);
+        const turnPts = myEntry ? Number(myEntry.points || 0) : 0;
+        const breakdown = myEntry && Array.isArray(myEntry.breakdown) ? myEntry.breakdown : [];
+        const matches = myEntry ? Number(myEntry.matches || 0) : 0;
+
+        const scoreEl = document.getElementById('player-turn-total-score');
+        const sign = turnPts > 0 ? `+${turnPts}` : `${turnPts}`;
+        scoreEl.textContent = `${sign} punti in questo turno`;
+        scoreEl.className = `text-2xl font-extrabold mt-0.5 ${turnPts > 0 ? 'text-emerald-400' : turnPts < 0 ? 'text-rose-400' : 'text-amber-300'}`;
+
+        const calcParts = [];
+        breakdown.forEach(b => {
+          if (b.isHit) {
+            calcParts.push(`pos. ${b.position} (+${b.points} pt)`);
+          }
+        });
+        if (matches === 5) {
+          calcParts.push("bonus classifica perfetta (+3 pt)");
+        } else if (matches === 0) {
+          calcParts.push("malus 0 indovinate (-1 pt)");
+        }
+
+        const calcSummary = calcParts.length > 0
+          ? `Calcolo turno (${matches}/5 indovinate): ${calcParts.join(" + ")} = ${sign} pt.`
+          : `Calcolo turno (${matches}/5 indovinate): nessuna posizione indovinata = 0 pt.`;
+
+        document.getElementById('player-turn-calculation-message').textContent = calcSummary;
+
+        document.getElementById('player-target-picks-list').innerHTML = breakdown.map((b, idx) => {
+          const pos = b.position || (idx + 1);
+          const ptsLabel = b.isHit ? `+${b.points} pt` : "0 pt";
+          return `
+            <li class="flex items-center justify-between gap-2 bg-slate-800/80 border ${b.isHit ? 'border-emerald-500/40' : 'border-slate-700/80'} px-3 py-2 rounded-lg">
+              <div class="flex items-center gap-2 min-w-0">
+                <span class="inline-flex items-center justify-center w-5 h-5 rounded-full ${b.isHit ? 'bg-emerald-500/20 text-emerald-300' : 'bg-slate-700 text-slate-400'} font-bold text-[11px] shrink-0">${pos}</span>
+                <span class="truncate text-slate-100 font-medium">${b.option}</span>
+              </div>
+              <span class="text-[11px] font-bold shrink-0 px-2 py-0.5 rounded ${b.isHit ? 'bg-emerald-500/20 text-emerald-300' : 'bg-rose-500/15 text-rose-300'}">
+                ${b.isHit ? `Indovinata (${ptsLabel})` : 'Non indovinata'}
+              </span>
+            </li>
+          `;
+        }).join('');
+      }
+
+      renderStandingsUI(playersObj);
+    }
+
+    function listenToRoom() {
+      roomRef.off();
+      roomRef.on('value', snapshot => {
+        const data = snapshot.val();
+        if (!data) return;
+        currentGameState = data;
+
+        const playersObj = data.players || {};
+
+        if (data.state === 'lobby') {
+          clearRoundTimer();
+          viewingStandings = false;
+          setupLobbyUI();
+          const list = document.getElementById('players-list');
+          list.innerHTML = Object.entries(playersObj).map(([key, p]) => {
+            const label = (p && p.name) ? p.name : key;
+            const meTag = key === myPlayerKey ? ` <span class="text-cyan-400 font-bold">(Tu)</span>` : '';
+            return `<li class="font-medium text-slate-200">👤 ${label}${meTag}</li>`;
+          }).join('');
+          showScreen('screen-lobby');
+        }
+
+        if (data.state === 'playing') {
+          viewingStandings = false;
+          const targetName = data.currentTargetName || data.currentTarget;
+          const isViewerTarget = myPlayerKey === data.currentTarget;
+
+          const totalQ = Array.isArray(data.questions) && data.questions.length > 0 ? data.questions.length : defaultQuestions.length;
+          const currentQNum = Number(data.roundNumber || 1);
+          document.getElementById('question-counter-badge').textContent = `Domanda ${currentQNum} / ${totalQ}`;
+          document.getElementById('current-target-name').innerText = targetName;
+          document.getElementById('current-question-text').innerText = formatQuestionForViewer(
+            data.currentQuestion,
+            targetName,
+            isViewerTarget
+          );
+
+          if (isViewerTarget) {
+            document.getElementById('role-instruction').innerText = "Sei il Bersaglio! Trascina con l'ancora ⋮⋮ da 1 (preferita) a 5 (meno preferita):";
+          } else {
+            document.getElementById('role-instruction').innerText = `Indovina l'ordine (1 → 5) del Bersaglio ${targetName} trascinando con l'ancora ⋮⋮:`;
+          }
+
+          updateSubmissionsStatusUI(data);
+          syncTargetTimerUI(data);
+
+          const hasVoted = data.votes && Object.prototype.hasOwnProperty.call(data.votes, myPlayerKey);
+          if (!hasVoted) {
+            if (!Array.isArray(userVote) || userVote.length === 0) {
+              userVote = [...(data.currentQuestion.options || [])];
+            }
+            renderDraggableList();
+            document.getElementById('submit-vote-btn').classList.remove('hidden');
+            document.getElementById('waiting-others').classList.add('hidden');
+          } else {
+            document.getElementById('submit-vote-btn').classList.add('hidden');
+            document.getElementById('waiting-others').classList.remove('hidden');
+          }
+
+          showScreen('screen-game');
+        }
+
+        if (isHost && data.state === 'playing' && data.votes && Object.keys(data.votes).length === Object.keys(playersObj).length && Object.keys(playersObj).length > 0) {
+          calculateAndPushResults(data);
+        }
+
+        if (data.state === 'results') {
+          clearRoundTimer();
+          userVote = [];
+          const roundKey = `${data.roundNumber || 0}_${data.currentTarget || ''}`;
+          if (lastResultsRoundKey !== roundKey) {
+            lastResultsRoundKey = roundKey;
+            viewingStandings = false;
+          }
+
+          renderTurnResultsForViewer(data);
+
+          if (viewingStandings) {
+            showScreen('screen-standings');
+          } else {
+            showScreen('screen-results');
+          }
+        }
+      });
+    }
+
+    function startGame() {
+      nextRound();
+    }
+
+    function nextRound() {
+      if (!isHost) return;
+
+      viewingStandings = false;
+      autoSubmitTriggeredForRound = null;
+      const playersObj = currentGameState.players || {};
+      const playerKeys = Object.keys(playersObj);
+      if (playerKeys.length === 0) return;
+
+      let history = Array.isArray(currentGameState.targetHistory) ? [...currentGameState.targetHistory] : [];
+      let availableTargets = playerKeys.filter(k => !history.includes(k));
+      if (availableTargets.length === 0) {
+        history = [];
+        availableTargets = [...playerKeys];
+      }
+
+      const nextTargetKey = availableTargets[Math.floor(Math.random() * availableTargets.length)];
+      const nextTargetName = (playersObj[nextTargetKey] && playersObj[nextTargetKey].name) || nextTargetKey;
+      history.push(nextTargetKey);
+
+      const pool = Array.isArray(currentGameState.questions) && currentGameState.questions.length > 0
+        ? currentGameState.questions
+        : getActiveDeck();
+
+      let usedIndices = Array.isArray(currentGameState.usedQuestionIndices) ? [...currentGameState.usedQuestionIndices] : [];
+      let availableIndices = pool.map((_, idx) => idx).filter(idx => !usedIndices.includes(idx));
+      if (availableIndices.length === 0) {
+        usedIndices = [];
+        availableIndices = pool.map((_, idx) => idx);
+      }
+
+      const chosenIndex = availableIndices[Math.floor(Math.random() * availableIndices.length)];
+      usedIndices.push(chosenIndex);
+      const question = pool[chosenIndex];
+      const nextRoundNumber = Number(currentGameState.roundNumber || 0) + 1;
+
+      roomRef.update({
+        state: 'playing',
+        roundNumber: nextRoundNumber,
+        currentTarget: nextTargetKey,
+        currentTargetName: nextTargetName,
+        currentQuestion: question,
+        targetHistory: history,
+        usedQuestionIndices: usedIndices,
+        targetTimerDeadline: null,
+        votes: null
+      });
+    }
+
+    function renderDraggableList() {
+      const ul = document.getElementById('options-list');
+      const itemsToRender = [...userVote];
+      const isDragging = dragState.active && dragState.currentIndex !== null && dragState.placeholderIndex !== null;
+
+      let html = '';
+      if (isDragging) {
+        const draggedValue = itemsToRender[dragState.currentIndex];
+        const remaining = itemsToRender.filter((_, i) => i !== dragState.currentIndex);
+        const clampedSlot = Math.max(0, Math.min(dragState.placeholderIndex, remaining.length));
+
+        const buildRow = (opt, displayIdx, isGhost) => `
+          <li data-slot-index="${displayIdx}"
+              class="drag-row ${isGhost ? 'dragging' : ''} bg-slate-800 border border-slate-700 p-3 rounded-xl flex justify-between items-center gap-2 text-sm font-medium">
+            <div class="flex items-center gap-2.5 min-w-0 flex-grow">
+              <span class="drag-anchor inline-flex flex-col items-center justify-center w-8 h-9 rounded-lg bg-indigo-600/25 border border-indigo-400/50 text-indigo-200 shrink-0" title="Trascina qui">
+                <span class="text-[11px] leading-none tracking-tighter">⋮⋮</span>
+                <span class="text-[11px] font-extrabold leading-tight mt-0.5">${displayIdx + 1}</span>
+              </span>
+              <div class="min-w-0 flex-grow">
+                <div class="text-[10px] uppercase tracking-wider text-slate-400">${positionLabels[displayIdx] || (displayIdx + 1)}</div>
+                <div class="text-slate-100 truncate">${opt}</div>
+              </div>
+            </div>
+          </li>
+        `;
+
+        let displayCounter = 0;
+        for (let i = 0; i <= remaining.length; i++) {
+          if (i === clampedSlot) {
+            html += `
+              <li class="trello-drop-slot">
+                Posizione ${displayCounter + 1} • Rilascia qui
+              </li>
+            `;
+            html += buildRow(draggedValue, displayCounter, true);
+            displayCounter++;
+          }
+          if (i < remaining.length) {
+            html += buildRow(remaining[i], displayCounter, false);
+            displayCounter++;
+          }
+        }
+        ul.innerHTML = html;
+        return;
+      }
+
+      ul.innerHTML = itemsToRender.map((opt, idx) => `
+        <li data-index="${idx}"
+            class="drag-row bg-slate-800 border border-slate-700 p-3 rounded-xl flex justify-between items-center gap-2 text-sm font-medium">
+          <div class="flex items-center gap-2.5 min-w-0 flex-grow">
+            <button type="button"
+                    onpointerdown="handleAnchorPointerDown(event, ${idx})"
+                    aria-label="Trascina opzione ${idx + 1}"
+                    class="drag-anchor inline-flex flex-col items-center justify-center w-8 h-9 rounded-lg bg-indigo-600/25 hover:bg-indigo-600/40 border border-indigo-400/50 text-indigo-200 shrink-0 transition"
+                    title="Trascina per spostare">
+              <span class="text-[11px] leading-none tracking-tighter">⋮⋮</span>
+              <span class="text-[11px] font-extrabold leading-tight mt-0.5">${idx + 1}</span>
+            </button>
+            <div class="min-w-0 flex-grow">
+              <div class="text-[10px] uppercase tracking-wider text-slate-400">${positionLabels[idx] || (idx + 1)}</div>
+              <div class="text-slate-100 truncate">${opt}</div>
+            </div>
+          </div>
+          <div class="flex items-center gap-1 shrink-0">
+            <button type="button" onclick="moveOption(${idx}, -1)" ${idx === 0 ? 'disabled' : ''} class="bg-slate-700 hover:bg-slate-600 disabled:opacity-30 px-2.5 py-1.5 rounded-lg text-xs">▲</button>
+            <button type="button" onclick="moveOption(${idx}, 1)" ${idx === itemsToRender.length - 1 ? 'disabled' : ''} class="bg-slate-700 hover:bg-slate-600 disabled:opacity-30 px-2.5 py-1.5 rounded-lg text-xs">▼</button>
+          </div>
+        </li>
+      `).join('');
+    }
+
+    function handleAnchorPointerDown(e, index) {
+      if (e.button !== undefined && e.button !== 0 && e.pointerType === 'mouse') return;
+      e.preventDefault();
+      e.stopPropagation();
+
+      dragState = {
+        active: true,
+        pointerId: e.pointerId,
+        sourceIndex: index,
+        currentIndex: index,
+        placeholderIndex: index
+      };
+
+      const ul = document.getElementById('options-list');
+      if (ul && ul.setPointerCapture) {
+        try { ul.setPointerCapture(e.pointerId); } catch (_) {}
+      }
+
+      renderDraggableList();
+    }
+
+    document.addEventListener('pointermove', function(e) {
+      if (!dragState.active || e.pointerId !== dragState.pointerId) return;
+
+      const ul = document.getElementById('options-list');
+      if (!ul) return;
+
+      const rows = Array.from(ul.querySelectorAll('li.drag-row'));
+      if (rows.length === 0) return;
+
+      let newSlot = rows.length - 1;
+      for (let i = 0; i < rows.length; i++) {
+        const rect = rows[i].getBoundingClientRect();
+        const midY = rect.top + rect.height / 2;
+        if (e.clientY < midY) {
+          newSlot = i;
+          break;
+        }
+      }
+
+      newSlot = Math.max(0, Math.min(newSlot, userVote.length - 1));
+      if (newSlot !== dragState.placeholderIndex) {
+        dragState.placeholderIndex = newSlot;
+        renderDraggableList();
+      }
+    });
+
+    function finishPointerDrag(e) {
+      if (!dragState.active) return;
+      if (e && e.pointerId !== undefined && dragState.pointerId !== null && e.pointerId !== dragState.pointerId) return;
+
+      const ul = document.getElementById('options-list');
+      if (ul && dragState.pointerId !== null && ul.releasePointerCapture) {
+        try { ul.releasePointerCapture(dragState.pointerId); } catch (_) {}
+      }
+
+      if (
+        dragState.currentIndex !== null &&
+        dragState.placeholderIndex !== null &&
+        dragState.currentIndex !== dragState.placeholderIndex
+      ) {
+        const [movedItem] = userVote.splice(dragState.currentIndex, 1);
+        userVote.splice(dragState.placeholderIndex, 0, movedItem);
+      }
+
+      dragState = {
+        active: false,
+        pointerId: null,
+        sourceIndex: null,
+        currentIndex: null,
+        placeholderIndex: null
+      };
+
+      renderDraggableList();
+    }
+
+    document.addEventListener('pointerup', finishPointerDrag);
+    document.addEventListener('pointercancel', finishPointerDrag);
+
+    function moveOption(index, direction) {
+      const target = index + direction;
+      if (target < 0 || target >= userVote.length) return;
+      const temp = userVote[index];
+      userVote[index] = userVote[target];
+      userVote[target] = temp;
+      renderDraggableList();
+    }
+
+    function submitRanking() {
+      const updates = {};
+      updates['votes/' + myPlayerKey] = userVote;
+
+      if (
+        currentGameState &&
+        myPlayerKey === currentGameState.currentTarget &&
+        !currentGameState.targetTimerDeadline
+      ) {
+        updates['targetTimerDeadline'] = Date.now() + 60000;
+      }
+
+      roomRef.update(updates);
+    }
+
+    function calculateAndPushResults(data) {
+      const targetKey = data.currentTarget;
+      const targetRanking = Array.isArray(data.votes[targetKey]) ? data.votes[targetKey] : [];
+      const targetBonusEnabled = Boolean(data.targetBonusEnabled);
+      const roundScores = [];
+      const updatedPlayers = {};
+
+      Object.entries(data.players || {}).forEach(([key, p]) => {
+        updatedPlayers[key] = {
+          name: (p && p.name) || key,
+          score: Number((p && p.score) || 0)
+        };
+      });
+
+      const optionGuessedCounts = targetRanking.map(() => 0);
+      const guesserKeys = Object.keys(updatedPlayers).filter(k => k !== targetKey);
+
+      guesserKeys.forEach(playerKey => {
+        const displayName = updatedPlayers[playerKey].name;
+        const pVote = Array.isArray(data.votes[playerKey]) ? data.votes[playerKey] : [];
+        let pts = 0;
+        let matches = 0;
+        const breakdown = [];
+
+        pVote.forEach((item, idx) => {
+          const isHit = item === targetRanking[idx];
+          let slotPts = 0;
+          if (isHit) {
+            matches++;
+            optionGuessedCounts[idx] += 1;
+            slotPts = (idx === 0 || idx === 4) ? 2 : 1;
+            pts += slotPts;
+          }
+          breakdown.push({
+            position: idx + 1,
+            option: item,
+            isHit: isHit,
+            points: slotPts
+          });
+        });
+
+        let bonusNote = "";
+        if (matches === 5) {
+          pts += 3;
+          bonusNote = "Bonus classifica perfetta: +3 pt";
+        } else if (matches === 0) {
+          pts = -1;
+          bonusNote = "Malus zero risposte indovinate: -1 pt";
+        }
+
+        updatedPlayers[playerKey].score += pts;
+        roundScores.push({
+          playerKey: playerKey,
+          name: displayName,
+          isTarget: false,
+          matches: matches,
+          points: pts,
+          runningTotal: updatedPlayers[playerKey].score,
+          detail: `${matches}/5 indovinate`,
+          summaryLabel: `${matches}/5 indovinate`,
+          bonusNote: bonusNote,
+          breakdown: breakdown
+        });
+      });
+
+      const allOptionsGuessedByAtLeastOne = targetRanking.length === 5 && optionGuessedCounts.every(c => c >= 1);
+      const targetBonusEarned = targetBonusEnabled && allOptionsGuessedByAtLeastOne;
+      const targetBonusPoints = targetBonusEarned ? 3 : 0;
+
+      if (updatedPlayers[targetKey]) {
+        updatedPlayers[targetKey].score += targetBonusPoints;
+      }
+
+      const targetDisplayName = (updatedPlayers[targetKey] && updatedPlayers[targetKey].name)
+        || data.currentTargetName
+        || targetKey;
+
+      const targetBreakdown = targetRanking.map((opt, idx) => ({
+        position: idx + 1,
+        option: opt,
+        isHit: optionGuessedCounts[idx] > 0,
+        points: 0
+      }));
+
+      roundScores.unshift({
+        playerKey: targetKey,
+        name: targetDisplayName,
+        isTarget: true,
+        matches: 0,
+        points: targetBonusPoints,
+        runningTotal: updatedPlayers[targetKey] ? updatedPlayers[targetKey].score : 0,
+        detail: targetBonusEarned ? "Bonus Bersaglio +3 pt" : "0 pt bonus",
+        summaryLabel: targetBonusEarned ? "Bonus Bersaglio +3 pt" : "0 pt bonus",
+        bonusNote: targetBonusEarned
+          ? "Tutte le 5 opzioni indovinate da almeno un giocatore: +3 pt!"
+          : (!targetBonusEnabled ? "Bonus bersaglio disattivato per questa partita" : "Bonus +3 pt non sbloccato"),
+        breakdown: targetBreakdown
+      });
+
+      const optionStats = targetRanking.map((opt, idx) => ({
+        position: idx + 1,
+        option: opt,
+        guessedCount: optionGuessedCounts[idx]
+      }));
+
+      roomRef.update({
+        state: 'results',
+        targetTimerDeadline: null,
+        targetRanking: targetRanking,
+        optionStats: optionStats,
+        targetBonusEnabled: targetBonusEnabled,
+        targetBonusEarned: targetBonusEarned,
+        roundScores: roundScores,
+        players: updatedPlayers
+      });
+    }
+
+    window.onload = function() {
+      const urlParams = new URLSearchParams(window.location.search);
+      const roomParam = urlParams.get('room');
+      if (roomParam) {
+        document.getElementById('room-code-input').value = roomParam.toUpperCase();
+        document.getElementById('create-room-card').classList.add('hidden');
+        document.getElementById('qr-invite-badge').classList.remove('hidden');
+        document.getElementById('qr-invite-hint').classList.remove('hidden');
+        document.getElementById('show-create-option-wrapper').classList.remove('hidden');
+      }
+      runFirebaseStartupTest();
+    };
+  </script>
+</body>
+</html>
