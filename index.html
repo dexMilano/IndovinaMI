@@ -139,6 +139,27 @@
           </div>
         </div>
 
+        <!-- Modalità scelta Target: Rotazione ogni turno vs Target Fisso -->
+        <div class="bg-slate-900/70 border border-slate-700/80 rounded-xl p-3 space-y-2">
+          <label class="block text-xs font-semibold text-indigo-200">
+            Scelta del Bersaglio (Target)
+          </label>
+          <div class="grid grid-cols-1 gap-2 text-xs">
+            <label class="flex items-start gap-2.5 p-2 rounded-lg bg-slate-800/70 border border-slate-700 cursor-pointer">
+              <input type="radio" name="target-mode" value="rotation" checked class="mt-0.5 text-indigo-500 focus:ring-indigo-500">
+              <span>
+                <strong class="text-white">A rotazione ogni turno</strong>: cambia bersaglio a ogni domanda.
+              </span>
+            </label>
+            <label class="flex items-start gap-2.5 p-2 rounded-lg bg-slate-800/70 border border-slate-700 cursor-pointer">
+              <input type="radio" name="target-mode" value="fixed" class="mt-0.5 text-indigo-500 focus:ring-indigo-500">
+              <span>
+                <strong class="text-amber-300">Stesso Target per tutta la partita</strong>: scegli il bersaglio nella lobby prima di iniziare e tutte le domande riguarderanno lui.
+              </span>
+            </label>
+          </div>
+        </div>
+
         <!-- Regola opzionale: Bonus Bersaglio -->
         <div class="bg-slate-900/70 border border-slate-700/80 rounded-xl p-3">
           <label class="flex items-start gap-2.5 text-xs text-slate-200 cursor-pointer">
@@ -161,13 +182,44 @@
       <div class="bg-slate-800 p-6 rounded-2xl border border-slate-700 text-center shadow-xl space-y-4">
         <span class="text-xs uppercase tracking-widest text-slate-400">Codice Stanza</span>
         <div id="display-room-code" class="text-4xl font-extrabold text-indigo-400 tracking-wider">----</div>
-        <div id="lobby-target-bonus-info" class="inline-block text-[11px] px-3 py-1 rounded-full bg-slate-900 border border-slate-700 text-slate-300"></div>
+        <div class="flex flex-wrap items-center justify-center gap-2">
+          <div id="lobby-target-bonus-info" class="inline-block text-[11px] px-3 py-1 rounded-full bg-slate-900 border border-slate-700 text-slate-300"></div>
+          <div id="lobby-target-mode-info" class="inline-block text-[11px] px-3 py-1 rounded-full bg-slate-900 border border-slate-700 text-indigo-300"></div>
+        </div>
 
-        <div id="qrcode-container" class="flex justify-center my-4 p-2 bg-white rounded-xl w-fit mx-auto"></div>
+        <!-- Link di invito & QR -->
+        <div class="bg-slate-900/80 border border-slate-700 rounded-xl p-3 space-y-2.5 text-left">
+          <div class="text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+            Link di invito per i giocatori
+          </div>
+          <div class="flex items-center gap-2">
+            <input type="text" id="room-invite-link-input" readonly class="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-2 text-xs text-indigo-200 select-all focus:outline-none">
+            <button type="button" onclick="copyInviteLink()" id="copy-link-btn" class="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold px-3 py-2 rounded-lg text-xs shrink-0 transition">
+              Copia
+            </button>
+            <button type="button" onclick="shareInviteLink()" id="share-link-btn" class="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold px-3 py-2 rounded-lg text-xs shrink-0 transition">
+              Condividi
+            </button>
+          </div>
+          <p id="copy-link-feedback" class="text-[11px] text-emerald-400 hidden"></p>
+        </div>
+
+        <div id="qrcode-container" class="flex justify-center my-3 p-2 bg-white rounded-xl w-fit mx-auto"></div>
 
         <div class="border-t border-slate-700 pt-4">
           <h3 class="text-sm font-semibold text-slate-300 mb-2">Giocatori Connessi:</h3>
           <ul id="players-list" class="space-y-1 text-slate-400 text-sm"></ul>
+        </div>
+
+        <!-- Selezione Bersaglio Fisso prima dell'avvio (solo Host in modalità fixed) -->
+        <div id="fixed-target-selector-box" class="hidden bg-amber-950/35 border border-amber-400/50 rounded-xl p-3.5 text-left space-y-2">
+          <label for="fixed-target-select" class="block text-xs font-bold text-amber-300">
+            🎯 Scegli il Bersaglio per tutta la partita:
+          </label>
+          <select id="fixed-target-select" onchange="onFixedTargetSelectionChange()" class="w-full bg-slate-900 border border-amber-400/50 rounded-xl px-3 py-2.5 text-sm text-white focus:outline-none focus:border-amber-400"></select>
+          <p class="text-[11px] text-amber-200/80">
+            Tutte le domande di questa stanza riguarderanno il giocatore selezionato.
+          </p>
         </div>
 
         <div id="host-controls" class="hidden pt-4 border-t border-slate-700">
@@ -193,7 +245,7 @@
         </div>
 
         <div class="text-center pt-0.5">
-          <div class="text-[11px] text-slate-400">Bersaglio di questo turno:</div>
+          <div class="text-[11px] text-slate-400" id="current-target-role-label">Bersaglio di questo turno:</div>
           <div id="current-target-name" class="text-lg font-bold text-amber-400">---</div>
         </div>
 
@@ -440,6 +492,55 @@
         options: ["Hamburger gourmet", "Patatine fritte", "Nuggets di pollo", "Pizza al taglio", "Kebab completo"]
       }
     ];
+
+    function getRoomInviteUrl(code) {
+      const baseUrl = window.location.href.split('?')[0].split('#')[0];
+      return `${baseUrl}?room=${encodeURIComponent(code || roomCode)}`;
+    }
+
+    function copyInviteLink() {
+      const linkInput = document.getElementById('room-invite-link-input');
+      const feedback = document.getElementById('copy-link-feedback');
+      const textToCopy = linkInput.value || getRoomInviteUrl(roomCode);
+
+      const showCopied = () => {
+        feedback.textContent = "✅ Link copiato negli appunti! Inviarlo ai giocatori è facilissimo.";
+        feedback.classList.remove('hidden');
+        setTimeout(() => feedback.classList.add('hidden'), 3000);
+      };
+
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(textToCopy).then(showCopied).catch(() => {
+          linkInput.select();
+          document.execCommand('copy');
+          showCopied();
+        });
+      } else {
+        linkInput.select();
+        document.execCommand('copy');
+        showCopied();
+      }
+    }
+
+    function shareInviteLink() {
+      const shareUrl = getRoomInviteUrl(roomCode);
+      const shareData = {
+        title: 'IndovinaMI - Entra nella mia stanza!',
+        text: `Unisciti alla mia partita su IndovinaMI con il codice ${roomCode}:`,
+        url: shareUrl
+      };
+
+      if (navigator.share) {
+        navigator.share(shareData).catch(() => {});
+      } else {
+        copyInviteLink();
+      }
+    }
+
+    function getSelectedTargetModeFromForm() {
+      const checked = document.querySelector('input[name="target-mode"]:checked');
+      return checked && checked.value === 'fixed' ? 'fixed' : 'rotation';
+    }
 
     function escapeCSVField(value) {
       const str = String(value ?? '');
@@ -919,6 +1020,7 @@
       const deckToUse = getActiveDeck();
       const activeDeckTitle = getActiveDeckName();
       const targetBonusEnabled = Boolean(document.getElementById('target-bonus-enabled-input').checked);
+      const targetMode = getSelectedTargetModeFromForm();
 
       const btn = document.getElementById('create-room-btn');
       btn.disabled = true;
@@ -928,6 +1030,9 @@
         state: 'lobby',
         host: myNickname,
         deckName: activeDeckTitle,
+        targetMode: targetMode,
+        fixedTargetKey: targetMode === 'fixed' ? myPlayerKey : null,
+        fixedTargetName: targetMode === 'fixed' ? myNickname : null,
         targetBonusEnabled: targetBonusEnabled,
         roundNumber: 0,
         questions: deckToUse,
@@ -990,8 +1095,63 @@
       });
     }
 
+    function syncFixedTargetSelector(playersObj, stateData) {
+      const selectorBox = document.getElementById('fixed-target-selector-box');
+      const selectEl = document.getElementById('fixed-target-select');
+      const mode = (stateData && stateData.targetMode) || 'rotation';
+
+      if (!isHost || mode !== 'fixed') {
+        selectorBox.classList.add('hidden');
+        return;
+      }
+
+      selectorBox.classList.remove('hidden');
+      const entries = Object.entries(playersObj || {});
+      if (entries.length === 0) return;
+
+      const currentSelected = (stateData && stateData.fixedTargetKey && playersObj[stateData.fixedTargetKey])
+        ? stateData.fixedTargetKey
+        : (selectEl.value && playersObj[selectEl.value] ? selectEl.value : myPlayerKey);
+
+      selectEl.innerHTML = entries.map(([key, p]) => {
+        const label = (p && p.name) ? p.name : key;
+        const selectedAttr = key === currentSelected ? 'selected' : '';
+        return `<option value="${key}" ${selectedAttr}>🎯 ${label}</option>`;
+      }).join('');
+
+      const chosenKey = selectEl.value || currentSelected;
+      const chosenName = (playersObj[chosenKey] && playersObj[chosenKey].name) || chosenKey;
+      if (roomRef && (!stateData || stateData.fixedTargetKey !== chosenKey || stateData.fixedTargetName !== chosenName)) {
+        roomRef.update({
+          fixedTargetKey: chosenKey,
+          fixedTargetName: chosenName
+        });
+      }
+    }
+
+    function onFixedTargetSelectionChange() {
+      if (!isHost || !roomRef || !currentGameState) return;
+      const selectEl = document.getElementById('fixed-target-select');
+      const playersObj = currentGameState.players || {};
+      const chosenKey = selectEl.value;
+      if (!chosenKey || !playersObj[chosenKey]) return;
+      const chosenName = (playersObj[chosenKey] && playersObj[chosenKey].name) || chosenKey;
+      roomRef.update({
+        fixedTargetKey: chosenKey,
+        fixedTargetName: chosenName
+      });
+    }
+
     function setupLobbyUI() {
       document.getElementById('display-room-code').innerText = roomCode;
+      document.getElementById('room-invite-link-input').value = getRoomInviteUrl(roomCode);
+
+      if (!navigator.share) {
+        document.getElementById('share-link-btn').classList.add('hidden');
+      } else {
+        document.getElementById('share-link-btn').classList.remove('hidden');
+      }
+
       const bonusInfo = document.getElementById('lobby-target-bonus-info');
       const bonusEnabled = Boolean(currentGameState && currentGameState.targetBonusEnabled);
       bonusInfo.textContent = bonusEnabled
@@ -1000,6 +1160,19 @@
       bonusInfo.className = bonusEnabled
         ? "inline-block text-[11px] px-3 py-1 rounded-full bg-amber-500/20 border border-amber-400/40 text-amber-300 font-semibold"
         : "inline-block text-[11px] px-3 py-1 rounded-full bg-slate-900 border border-slate-700 text-slate-400";
+
+      const modeInfo = document.getElementById('lobby-target-mode-info');
+      const mode = (currentGameState && currentGameState.targetMode) || 'rotation';
+      if (mode === 'fixed') {
+        const fixedName = (currentGameState && currentGameState.fixedTargetName) || 'da scegliere';
+        modeInfo.textContent = `🎯 Target Fisso: ${fixedName}`;
+        modeInfo.className = "inline-block text-[11px] px-3 py-1 rounded-full bg-amber-500/15 border border-amber-400/40 text-amber-300 font-semibold";
+      } else {
+        modeInfo.textContent = "🔄 Target a rotazione";
+        modeInfo.className = "inline-block text-[11px] px-3 py-1 rounded-full bg-indigo-500/15 border border-indigo-400/40 text-indigo-300 font-semibold";
+      }
+
+      syncFixedTargetSelector((currentGameState && currentGameState.players) || {}, currentGameState);
 
       if (isHost) {
         document.getElementById('host-controls').classList.remove('hidden');
@@ -1011,7 +1184,7 @@
 
       document.getElementById('qrcode-container').innerHTML = '';
       new QRCode(document.getElementById('qrcode-container'), {
-        text: window.location.href.split('?')[0] + '?room=' + roomCode,
+        text: getRoomInviteUrl(roomCode),
         width: 128,
         height: 128
       });
@@ -1322,7 +1495,6 @@
         finalStandings: sortedStandings
       }).then(() => {
         renderEndedScreen(snapshotMeta);
-        // Rimuove il nodo stanza dopo breve istante così il database resta pulito
         setTimeout(() => {
           if (roomRef) {
             roomRef.remove().catch(() => {});
@@ -1496,7 +1668,10 @@
           list.innerHTML = Object.entries(playersObj).map(([key, p]) => {
             const label = (p && p.name) ? p.name : key;
             const meTag = key === myPlayerKey ? ` <span class="text-cyan-400 font-bold">(Tu)</span>` : '';
-            return `<li class="font-medium text-slate-200">👤 ${label}${meTag}</li>`;
+            const targetTag = (data.targetMode === 'fixed' && key === data.fixedTargetKey)
+              ? ` <span class="text-amber-300 font-bold">🎯 Target</span>`
+              : '';
+            return `<li class="font-medium text-slate-200">👤 ${label}${meTag}${targetTag}</li>`;
           }).join('');
           showScreen('screen-lobby');
         }
@@ -1505,6 +1680,11 @@
           viewingStandings = false;
           const targetName = data.currentTargetName || data.currentTarget;
           const isViewerTarget = myPlayerKey === data.currentTarget;
+          const isFixedMode = data.targetMode === 'fixed';
+
+          document.getElementById('current-target-role-label').textContent = isFixedMode
+            ? "Bersaglio fisso di questa partita:"
+            : "Bersaglio di questo turno:";
 
           const totalQ = Array.isArray(data.questions) && data.questions.length > 0 ? data.questions.length : defaultQuestions.length;
           const currentQNum = Number(data.roundNumber || 1);
@@ -1578,16 +1758,29 @@
       const playerKeys = Object.keys(playersObj);
       if (playerKeys.length === 0) return;
 
+      const isFixedMode = currentGameState.targetMode === 'fixed';
+      let nextTargetKey = '';
+      let nextTargetName = '';
       let history = Array.isArray(currentGameState.targetHistory) ? [...currentGameState.targetHistory] : [];
-      let availableTargets = playerKeys.filter(k => !history.includes(k));
-      if (availableTargets.length === 0) {
-        history = [];
-        availableTargets = [...playerKeys];
-      }
 
-      const nextTargetKey = availableTargets[Math.floor(Math.random() * availableTargets.length)];
-      const nextTargetName = (playersObj[nextTargetKey] && playersObj[nextTargetKey].name) || nextTargetKey;
-      history.push(nextTargetKey);
+      if (isFixedMode) {
+        const selectEl = document.getElementById('fixed-target-select');
+        const chosenFromSelect = selectEl && selectEl.value && playersObj[selectEl.value] ? selectEl.value : null;
+        const chosenFromState = currentGameState.fixedTargetKey && playersObj[currentGameState.fixedTargetKey]
+          ? currentGameState.fixedTargetKey
+          : null;
+        nextTargetKey = chosenFromSelect || chosenFromState || playerKeys[0];
+        nextTargetName = (playersObj[nextTargetKey] && playersObj[nextTargetKey].name) || nextTargetKey;
+      } else {
+        let availableTargets = playerKeys.filter(k => !history.includes(k));
+        if (availableTargets.length === 0) {
+          history = [];
+          availableTargets = [...playerKeys];
+        }
+        nextTargetKey = availableTargets[Math.floor(Math.random() * availableTargets.length)];
+        nextTargetName = (playersObj[nextTargetKey] && playersObj[nextTargetKey].name) || nextTargetKey;
+        history.push(nextTargetKey);
+      }
 
       const pool = Array.isArray(currentGameState.questions) && currentGameState.questions.length > 0
         ? currentGameState.questions
@@ -1608,6 +1801,8 @@
       roomRef.update({
         state: 'playing',
         roundNumber: nextRoundNumber,
+        fixedTargetKey: isFixedMode ? nextTargetKey : (currentGameState.fixedTargetKey || null),
+        fixedTargetName: isFixedMode ? nextTargetName : (currentGameState.fixedTargetName || null),
         currentTarget: nextTargetKey,
         currentTargetName: nextTargetName,
         currentQuestion: question,
